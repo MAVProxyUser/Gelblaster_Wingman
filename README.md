@@ -68,20 +68,29 @@ Both STL & 3mf files for our "wingman" robotic Gelblaster turret are provided be
 [CC_BYNCSA_R_Front.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.stl)<br>
 
 ### Recommended additional parts<br>
-Co-computing:
+Co-computing:<br>
 [RasPi4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/)<br>
 [RasPi4 Hiqh Quality Camera](https://www.raspberrypi.com/products/raspberry-pi-high-quality-camera/)<br>
 (Jetson upgrade forthcoming)
 
-Storage:
+Storage:<br>
 [SanDisk 512GB Ultra microSD UHS-I speed](https://www.westerndigital.com/products/outlet/memory-cards/sandisk-ultra-uhs-i-microsd#SDSQUAR-512G-AN6MA) - Minimum recommended speed<br>
 [SanDisk 512GB Extreme microSDXC UHS-I](https://www.westerndigital.com/products/memory-cards/sandisk-extreme-uhs-i-microsd#SDSQXAV-512G-GN6MA) - Suggested speed<br>
 [SanDisk 512GB Extreme pro microSDXC UHS-I](https://www.westerndigital.com/products/memory-cards/sandisk-extreme-pro-uhs-i-microsd#SDSQXCD-512G-GN6MA) - Optimal speed<br>
 
-Stabilization & Mounting:
+Stabilization & Mounting:<br>
 [Joby Compact Advanced](https://joby.com/ca-en/compact-advanced-tripod-for-smartphone-and-camera-jb01763-bww/) tripod. <br>
 
 ## OpenCV setup for Face tracking on RasPi4
+Current design relies on the following items:<br>
+[MX-28AT](https://www.robotis.us/dynamixel-mx-28at/)<br>
+[U2D2 Power Hub Board Set](https://www.robotis.us/u2d2-power-hub-board-set/)<br>
+[U2D2](https://www.robotis.us/u2d2-power-hub-board-set/)<br>
 
+Proof of concept code:<br>
 https://github.com/MAVProxyUser/BloodHounds/blob/main/turret_v1_finisterre/v1_dynamixel.py
+
+Earlier designs relied on stepper motors and a smaller GelBlaster. An upgraded stepper turret is still under 
+construction.<br>
+https://github.com/MAVProxyUser/BloodHounds/blob/main/turret_v1_cherbini/v1.py
 
