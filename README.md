@@ -32,7 +32,7 @@ Ever since we saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo"
 
 A gamified version of the "Wingman" concept known as [BloodHounds](https://github.com/MAVProxyUser/BloodHounds) is being designed by Kevin Finisterre for use with Quadruped robot dogs. This project is being tested, & developed with assistence from John Cherbini & the Gelblaster design team, as a means to visualize the "game". 
 
-The design concept was pitched to the GelBlaster team, and the initial ideation phase reulted in the following proof of concept work. Thanks again to GlytchTech for the very early prototypes, pre Gelblaster pitch.<br> 
+The design concept was pitched to the GelBlaster team, and the initial ideation phase reulted in the following proof of concept work. Thanks again to [GlytchTech](https://twitter.com/GlytchTech) for the very early prototypes, pre Gelblaster pitch.<br> 
 ![Concept1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept1.png)
 ![Concept2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept2.png)
 
