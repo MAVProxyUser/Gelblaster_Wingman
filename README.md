@@ -2,11 +2,14 @@
 
 If you are interested in building & programming your own wingman stop by: https://join.slack.com/t/robotdogs/shared_invite/zt-1fvixx89u-7T79~VxmDYdFSIoTnSagFQ and join #gelblasters 
 
-* [Introduction](#introduction)
-* [Synopsis](#synopsis)
-* [Licensing](#licensing)
-* [Build Steps](#build-steps)
-   * [Required parts](#required-parts)
+* [Gelblasters Wingman](#gelblasters-wingman)
+   * [Introduction](#introduction)
+   * [Synopsis](#synopsis)
+   * [Licensing](#licensing)
+   * [Build Steps](#build-steps)
+      * [Required parts](#required-parts)
+      * [Recommended additional parts<br>](#recommended-additional-parts)
+   * [OpenCV setup for Face tracking on RasPi4](#opencv-setup-for-face-tracking-on-raspi4)
 
 ## Introduction
 
@@ -16,7 +19,7 @@ The Wingman (game) concept was designed by Kevin Finisterre, tested, & developed
 
 ## Synopsis 
 
-Ever since I saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo" in 1995 I knew I needed to own an automated sentry turret at some point in my life. It wasn't clear I'd eventually be sharing the design to one for others to use, but I sit, doing exactly that. 
+Ever since we saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo" in 1995 we knew we needed to own an automated sentry turret at some point in our lifetime. It wasn't clear we'd eventually be sharing the design to one for others to use, but here we sit, doing exactly that. 
 
 [![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Congo](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
 
@@ -53,9 +56,7 @@ or
 ![SurgeXL](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SurgeXL.jpeg)
 ![StarFire XL](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/StarFire.jpeg)
 
-STL Files for "wingman" robotic Gelblaster turret "mod".<br>
-Our test prints were sliced using Cura 
-[Cura](https://ultimaker.com/software/ultimaker-cura)
+Both STL & 3mf files for our "wingman" robotic Gelblaster turret are provided below Our personal test prints were sliced using [Cura](https://ultimaker.com/software/ultimaker-cura). You may slice with what ever makes you comfortable. 
 
 [C_BYNCSA_R_Back.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Back.3mf)<br>
 [C_BYNCSA_R_Back.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Back.stl)<br>
@@ -66,7 +67,21 @@ Our test prints were sliced using Cura
 [CC_BYNCSA_R_Front.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.3mf)<br>
 [CC_BYNCSA_R_Front.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.stl)<br>
 
-Recommended additional parts:
+### Recommended additional parts<br>
+Co-computing:
 [RasPi4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/)<br>
 [RasPi4 Hiqh Quality Camera](https://www.raspberrypi.com/products/raspberry-pi-high-quality-camera/)<br>
+(Jetson upgrade forthcoming)
+
+Storage:
+[SanDisk 512GB Ultra microSD UHS-I speed](https://www.westerndigital.com/products/outlet/memory-cards/sandisk-ultra-uhs-i-microsd#SDSQUAR-512G-AN6MA) - Minimum recommended speed<br>
+[SanDisk 512GB Extreme microSDXC UHS-I](https://www.westerndigital.com/products/memory-cards/sandisk-extreme-uhs-i-microsd#SDSQXAV-512G-GN6MA) - Suggested speed<br>
+[SanDisk 512GB Extreme pro microSDXC UHS-I](https://www.westerndigital.com/products/memory-cards/sandisk-extreme-pro-uhs-i-microsd#SDSQXCD-512G-GN6MA) - Optimal speed<br>
+
+Stabilization & Mounting:
 [Joby Compact Advanced](https://joby.com/ca-en/compact-advanced-tripod-for-smartphone-and-camera-jb01763-bww/) tripod. <br>
+
+## OpenCV setup for Face tracking on RasPi4
+
+https://github.com/MAVProxyUser/BloodHounds/blob/main/turret_v1_finisterre/v1_dynamixel.py
+
