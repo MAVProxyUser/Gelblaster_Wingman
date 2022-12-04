@@ -2,10 +2,9 @@
 
 Designed by Kevin Finisterre, & John Cherbini with assistance from Gelblaster design team. 
 
-Ever since I saw Frank Marshall's "Congo" in 1995 I knew I needed to own an automated sentry turret at some point in my life. It wasn't clear I'd eventually be sharing the design to one for others to use, but I sit, doing exactly that. 
+Ever since I saw Aliens in 1986, and Frank Marshall's "Congo" in 1995 I knew I needed to own an automated sentry turret at some point in my life. It wasn't clear I'd eventually be sharing the design to one for others to use, but I sit, doing exactly that. 
 
-
-[![liquor pour](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
+[![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Congo](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
 
 "Wingman" is a ![CC BY-NC-SA ](https://licensebuttons.net/l/by-nc-sa/3.0/88x31.png) licensed Open Source "GelBlaster" turret for ["general-purpose robots"](https://www.bostondynamics.com/open-letter-opposing-weaponization-general-purpose-robots). Built with gamification of non-lethal adversarial Gelblaster sparring matches in mind, "wingman" makes marksmanship a key comonent of playtime.
 
@@ -33,10 +32,8 @@ Required parts:
 or
 [GelBlaster Starfire XL](https://gelblaster.com/products/starfire-xl). They can be purchased from [Walmart](https://www.walmart.com/ip/Gel-Blaster-Surge-XL-Day-N-Nite-Gel-Bead-Blaster-with-Glow-in-the-Dark-Starfire-Activator-5k-Starfire-Gellets-10k-Green-Gellets/1283028596), and [Target](https://www.target.com/p/gel-blaster-starfire-xl-glow-in-the-dark-gellet-blaster/-/A-86669382) respectively. 
 
-![https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/SurgeXL.jpeg
-](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/SurgeXL.jpeg)
-
-![https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/StarFire.jpeg](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/StarFire.jpeg)
+![SurgeXL](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SurgeXL.jpeg)
+![StarFire XL](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/StarFire.jpeg)
 
 STL Files for "wingman" robotic Gelblaster turret "mod".<br>
 MAIN SHELL L Front.stl<br>
