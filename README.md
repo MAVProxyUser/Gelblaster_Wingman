@@ -1,6 +1,7 @@
 # Gelblasters Wingman
 
-If you are interested in building & programming your own wingman stop by: https://join.slack.com/t/robotdogs/shared_invite/zt-1fvixx89u-7T79~VxmDYdFSIoTnSagFQ and join #gelblasters 
+If you are interested in building & programming your own "Wingman" turret stop by:<br>
+https://join.slack.com/t/robotdogs/shared_invite/zt-1fvixx89u-7T79~VxmDYdFSIoTnSagFQ and join #gelblasters 
 
 * [Gelblasters Wingman](#gelblasters-wingman)
    * [Introduction](#introduction)
