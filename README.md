@@ -1,4 +1,4 @@
-# Gelblaster Wingman
+# Gelblaster Wingman Robotic Sentry Turret
 
 [![Gelblasters](images/GelBlasterlogo.jpg)](https://gelblaster.com)
 
@@ -16,17 +16,31 @@ https://join.slack.com/t/robotdogs/shared_invite/zt-1fvixx89u-7T79~VxmDYdFSIoTnS
 
 ## Introduction
 
-[Gelblaster](https://gelblaster.com) XL "Wingman" is robotic turret, that shoots Super Absorbant Polymer balls at targets as selected by AI logic. The "Gelblaster turret SDK" was inspired by U.S. Army [TARDEC](https://asc.army.mil/web/news-alt-jfm18-wingman-is-first-step-toward-weaponized-robotics/) - Tank-automotive and Armaments Command, [Open Robotics](https://www.openrobotics.org) [ROS-M](https://rosmilitary.org/faq/) military fork of Robot Operation System from GVSC - Combat Capabilities Development Command Ground Vehicle Systems Center. Functionality seeks to mimic concepts found in the [RTK](https://vimeo.com/593277076?) - Robotic Technology Kernel program.
+[Gelblaster](https://gelblaster.com) XL "Wingman" is a robotic turret, that shoots Super Absorbant Polymer balls at targets as selected by AI logic. The Gelblaster based "Wingman turret SDK" was inspired by U.S. Army [TARDEC](https://asc.army.mil/web/news-alt-jfm18-wingman-is-first-step-toward-weaponized-robotics/) - Tank-automotive and Armaments Command, [Open Robotics](https://www.openrobotics.org) [ROS-M](https://rosmilitary.org/faq/) military fork of Robot Operation System from GVSC - Combat Capabilities Development Command Ground Vehicle Systems Center, and their ["Wingman Robotic Gunner"](https://apps.dtic.mil/sti/pdfs/AD1069401.pdf) platform. Functionality of this project seeks to mimic concepts found in the [RTK](https://vimeo.com/593277076?) - Robotic Technology Kernel program. 
 
-The Wingman (game) concept was designed by Kevin Finisterre, tested, & developed by John Cherbini with assistance from Gelblaster the design team. 
+A gamified version of the "Wingman" concept known as [BloodHounds](https://github.com/MAVProxyUser/BloodHounds) is being designed by Kevin Finisterre for use with Quadruped robot dogs. This project is being tested, & developed with assistence from John Cherbini & the Gelblaster design team, as a means to visualize the "game". 
+
+The design concept was pitched to the GelBlaster team, and the initial ideation phase reulted in the following proof of concept work. Thanks again to GlytchTech for the very early prototypes, pre Gelblaster pitch.<br> 
+![Concept1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept1.png)
+![Concept2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept2.png)
+
+The barrel seemed a bit vulnerable so we asked for a shroud.<br> 
+![Concept3](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept3.png)
+![Concept4](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept4.png)
+
+We also needed a mounting system, pic rail seemed reasonable.<br> 
+![Concept5](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept5.png)
+![Concept6](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept6.png)
+
+Considerations over printability came next... and now we have something we can share. Mind you we still don't use the shroud, and we're testing sawed off barel designs. In otherwords, don't mind our mess while we are under construction.
 
 ## Synopsis 
 
 Ever since we saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo" in 1995 we knew we needed to own an automated sentry turret at some point in our lifetime. It wasn't clear we'd eventually be sharing the design to one for others to use, but here we sit, doing exactly that. 
 
-[![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Congo](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
+"Wingman" is a ![CC BY-NC-SA ](https://licensebuttons.net/l/by-nc-sa/3.0/88x31.png) licensed Open Source "GelBlaster" turret for ["general-purpose robots"](https://www.bostondynamics.com/open-letter-opposing-weaponization-general-purpose-robots). "Wingman" is designed with gamification of non-lethal adversarial Gelblaster sparring matches in mind. It makes robot assisted marksmanship a key comonent of playtime, are you ready to fight your robot overlords? No!? Well, you better get to training sooner than later!
 
-"Wingman" is a ![CC BY-NC-SA ](https://licensebuttons.net/l/by-nc-sa/3.0/88x31.png) licensed Open Source "GelBlaster" turret for ["general-purpose robots"](https://www.bostondynamics.com/open-letter-opposing-weaponization-general-purpose-robots). Built with gamification of non-lethal adversarial Gelblaster sparring matches in mind, "wingman" makes marksmanship a key comonent of playtime.
+[![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Congo](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
 
 ## Licensing 
 
@@ -54,12 +68,12 @@ No additional restrictions — You may not apply legal terms or technological me
 
 [GelBlaster Surge XL](https://gelblaster.com/products/surge-xl)
 or
-[GelBlaster Starfire XL](https://gelblaster.com/products/starfire-xl). They can be purchased from [Walmart](https://www.walmart.com/ip/Gel-Blaster-Surge-XL-Day-N-Nite-Gel-Bead-Blaster-with-Glow-in-the-Dark-Starfire-Activator-5k-Starfire-Gellets-10k-Green-Gellets/1283028596), and [Target](https://www.target.com/p/gel-blaster-starfire-xl-glow-in-the-dark-gellet-blaster/-/A-86669382) respectively. 
+[GelBlaster Starfire XL](https://gelblaster.com/products/starfire-xl). Either blaster can be purchased from [Walmart](https://www.walmart.com/ip/Gel-Blaster-Surge-XL-Day-N-Nite-Gel-Bead-Blaster-with-Glow-in-the-Dark-Starfire-Activator-5k-Starfire-Gellets-10k-Green-Gellets/1283028596), and [Target](https://www.target.com/p/gel-blaster-starfire-xl-glow-in-the-dark-gellet-blaster/-/A-86669382) respectively. 
 
 ![SurgeXL](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SurgeXL.jpeg)
 ![StarFire XL](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/StarFire.jpeg)
 
-Both STL & 3mf files for our "wingman" robotic Gelblaster turret are provided below Our personal test prints were sliced using [Cura](https://ultimaker.com/software/ultimaker-cura). You may slice with what ever makes you comfortable. 
+Both STL & 3mf files for our "Wingman" robotic Gelblaster turret are provided below Our personal test prints were sliced using [Cura](https://ultimaker.com/software/ultimaker-cura). You may slice with what ever makes you comfortable. 
 
 [C_BYNCSA_R_Back.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Back.3mf)<br>
 [C_BYNCSA_R_Back.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Back.stl)<br>
@@ -69,6 +83,14 @@ Both STL & 3mf files for our "wingman" robotic Gelblaster turret are provided be
 [CC_BYNCSA_R_Front.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.stl)<br>
 [CC_BYNCSA_R_Front.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.3mf)<br>
 [CC_BYNCSA_R_Front.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.stl)<br>
+
+### Printing
+This writeup will result in complete Wingman turret shells, ready to be filled with electronics, and assembled. Two example shells will be depicted during printing, cleanup, and assembly phases. These shells were in this case both printed with an [Ender S1 Pro 3d printer](https://www.creality3dofficial.com/products/ender-3s1-pro-3d-printer). 
+![Ready1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Ready1.jpeg)
+![Ready2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Ready2.jpeg)
+
+![Printing1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Printing1.jpg)
+![Printing2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Printing2.jpg)
 
 ### Recommended additional parts<br>
 Co-computing:<br>
@@ -83,6 +105,9 @@ Storage:<br>
 
 Stabilization & Mounting:<br>
 [Joby Compact Advanced](https://joby.com/ca-en/compact-advanced-tripod-for-smartphone-and-camera-jb01763-bww/) tripod. <br>
+
+Power:
+[Volessence 50000 battery](https://www.amazon.com/Volessence-50000mAh-Laptop-Portable-Charger/dp/B07RNZZXRM)
 
 ## OpenCV setup for Face tracking on RasPi4
 Current design relies on the following items:<br>
