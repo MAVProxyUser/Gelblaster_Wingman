@@ -5,14 +5,26 @@
 If you are interested in building & programming your own "Wingman" turret stop by:<br>
 https://join.slack.com/t/robotdogs/shared_invite/zt-1fvixx89u-7T79~VxmDYdFSIoTnSagFQ and join #gelblasters 
 
-* [Gelblasters Wingman](#gelblasters-wingman)
-   * [Introduction](#introduction)
+* [Gelblaster Wingman Robotic Sentry Turret](#gelblaster-wingman-robotic-sentry-turret)
    * [Synopsis](#synopsis)
+   * [Introduction](#introduction)
    * [Licensing](#licensing)
    * [Build Steps](#build-steps)
       * [Required parts](#required-parts)
+      * [Printing](#printing)
+      * [Transplant of GelBlaster XL electronics](#transplant-of-gelblaster-xl-electronics)
+   * [Making a sentry gun](#making-a-sentry-gun)
+      * [Required plumbing](#required-plumbing)
       * [Recommended additional parts<br>](#recommended-additional-parts)
-   * [OpenCV setup for Face tracking on RasPi4](#opencv-setup-for-face-tracking-on-raspi4)
+      * [OpenCV setup for Face tracking on RasPi4](#opencv-setup-for-face-tracking-on-raspi4)
+
+## Synopsis 
+
+Ever since we saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo" in 1995 we knew we needed to own an automated sentry turret at some point in our lifetime. It wasn't clear we'd eventually be sharing the design to one for others to use, but here we sit, doing exactly that. 
+
+"Wingman" is a ![CC BY-NC-SA ](https://licensebuttons.net/l/by-nc-sa/3.0/88x31.png) licensed Open Source "GelBlaster" turret for ["general-purpose robots"](https://www.bostondynamics.com/open-letter-opposing-weaponization-general-purpose-robots). "Wingman" is designed with gamification of non-lethal adversarial Gelblaster sparring matches in mind. It makes robot assisted marksmanship a key comonent of playtime, are you ready to fight your robot overlords? No!? Well, you better get to training sooner than later!
+
+[![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Congo](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
 
 ## Introduction
 
@@ -33,14 +45,6 @@ We also needed a mounting system, pic rail seemed reasonable.<br>
 ![Concept6](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Concept6.png)
 
 Considerations over printability came next... and now we have something we can share. Mind you we still don't use the shroud, and we're testing sawed off barel designs. In otherwords, don't mind our mess while we are under construction.
-
-## Synopsis 
-
-Ever since we saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo" in 1995 we knew we needed to own an automated sentry turret at some point in our lifetime. It wasn't clear we'd eventually be sharing the design to one for others to use, but here we sit, doing exactly that. 
-
-"Wingman" is a ![CC BY-NC-SA ](https://licensebuttons.net/l/by-nc-sa/3.0/88x31.png) licensed Open Source "GelBlaster" turret for ["general-purpose robots"](https://www.bostondynamics.com/open-letter-opposing-weaponization-general-purpose-robots). "Wingman" is designed with gamification of non-lethal adversarial Gelblaster sparring matches in mind. It makes robot assisted marksmanship a key comonent of playtime, are you ready to fight your robot overlords? No!? Well, you better get to training sooner than later!
-
-[![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Congo](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
 
 ## Licensing 
 
