@@ -49,12 +49,10 @@ Considerations over printability came next... and now we have something we can s
 ## Licensing 
 
 Creative Commons + Attribution-NonCommercial-ShareAlike licensing ( 
-CC BY-NC-SA ) applies to the 3D files shared along side this text. 
+CC BY-NC-SA ) applies to the 3D files shared along side this text. This license lets others remix, adapt, and build upon your work non-commercially, as long as they credit you and license their new creations under the identical terms.
 
-This license lets others remix, adapt, and build upon your work non-commercially, as long as they credit you and license their new creations under the identical terms.
-
-https://creativecommons.org/licenses/by-nc-sa/4.0/
-https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+https://creativecommons.org/licenses/by-nc-sa/4.0/<br>
+https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode<br>
 
 Under the following terms:
 
