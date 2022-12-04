@@ -68,5 +68,5 @@ Our test prints were sliced using Cura
 
 Recommended additional parts:
 [RasPi4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/)<br>
-[RasPi4 Hiqh Quality Camera](https://www.raspberrypi.com/products/raspberry-pi-high-quality-camera/)
-[Joby Compact Advanced](https://joby.com/ca-en/compact-advanced-tripod-for-smartphone-and-camera-jb01763-bww/) tripod. 
+[RasPi4 Hiqh Quality Camera](https://www.raspberrypi.com/products/raspberry-pi-high-quality-camera/)<br>
+[Joby Compact Advanced](https://joby.com/ca-en/compact-advanced-tripod-for-smartphone-and-camera-jb01763-bww/) tripod. <br>
