@@ -1,12 +1,18 @@
-[Gelblaster](https://gelblaster.com) XL "Wingman" robotic turret mod inspired by U.S. Army [TARDEC](https://asc.army.mil/web/news-alt-jfm18-wingman-is-first-step-toward-weaponized-robotics/), [Open Robotics](https://www.openrobotics.org) [ROS-M](https://rosmilitary.org/faq/) & GVSC [RTK](https://vimeo.com/593277076?).
+# Introduction
 
-Designed by Kevin Finisterre, & John Cherbini with assistance from Gelblaster design team. 
+[Gelblaster](https://gelblaster.com) XL "Wingman" is robotic turret (that shoots Soft Absorbant Polymer balls) inspired by U.S. Army [TARDEC](https://asc.army.mil/web/news-alt-jfm18-wingman-is-first-step-toward-weaponized-robotics/), [Open Robotics](https://www.openrobotics.org) [ROS-M](https://rosmilitary.org/faq/) & GVSC [RTK](https://vimeo.com/593277076?).
+
+The Wingman (game) concept was designed by Kevin Finisterre, tested, & developed by John Cherbini with assistance from Gelblaster the design team. 
+
+# Synopsis 
 
 Ever since I saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo" in 1995 I knew I needed to own an automated sentry turret at some point in my life. It wasn't clear I'd eventually be sharing the design to one for others to use, but I sit, doing exactly that. 
 
 [![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Congo](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
 
 "Wingman" is a ![CC BY-NC-SA ](https://licensebuttons.net/l/by-nc-sa/3.0/88x31.png) licensed Open Source "GelBlaster" turret for ["general-purpose robots"](https://www.bostondynamics.com/open-letter-opposing-weaponization-general-purpose-robots). Built with gamification of non-lethal adversarial Gelblaster sparring matches in mind, "wingman" makes marksmanship a key comonent of playtime.
+
+# Licensing 
 
 Creative Commons + Attribution-NonCommercial-ShareAlike licensing ( 
 CC BY-NC-SA ) applies to the 3D files shared along side this text. 
@@ -26,7 +32,9 @@ ShareAlike — If you remix, transform, or build upon the material, you must dis
 
 No additional restrictions — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
 
-Required parts:
+# Build Steps
+
+## Required parts
 
 [GelBlaster Surge XL](https://gelblaster.com/products/surge-xl)
 or
@@ -36,18 +44,18 @@ or
 ![StarFire XL](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/StarFire.jpeg)
 
 STL Files for "wingman" robotic Gelblaster turret "mod".<br>
+Our test prints were sliced using Cura 
+[Cura](https://ultimaker.com/software/ultimaker-cura)
 
-[C_BYNCSA_R_Back.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Back.3mf)
-[C_BYNCSA_R_Back.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Back.stl)
-
-[CC_BYNCSA_L_Back.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_L_Back.3mf)
-[CC_BYNCSA_L_Back.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_L_Back.stl)
-
-[CC_BYNCSA_R_Front.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.3mf)
-[CC_BYNCSA_R_Front.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.stl)
-
-[CC_BYNCSA_R_Front.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.3mf)
-[CC_BYNCSA_R_Front.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.stl)
+[C_BYNCSA_R_Back.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Back.3mf)<br>
+[C_BYNCSA_R_Back.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Back.stl)<br>
+[CC_BYNCSA_L_Back.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_L_Back.3mf)<br>
+[CC_BYNCSA_L_Back.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_L_Back.stl)<br>
+[CC_BYNCSA_R_Front.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.3mf)<br>
+[CC_BYNCSA_R_Front.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.stl)<br>
+[CC_BYNCSA_R_Front.3mf](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.3mf)<br>
+[CC_BYNCSA_R_Front.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_R_Front.stl)<br>
 
 Recommended additional parts:
-Raspi4
+[RasPi4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/)<br>
+[RasPi4 Hiqh Quality Camera](https://www.raspberrypi.com/products/raspberry-pi-high-quality-camera/)
