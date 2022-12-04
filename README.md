@@ -86,11 +86,41 @@ Both STL & 3mf files for our "Wingman" robotic Gelblaster turret are provided be
 
 ### Printing
 This writeup will result in complete Wingman turret shells, ready to be filled with electronics, and assembled. Two example shells will be depicted during printing, cleanup, and assembly phases. These shells were in this case both printed with an [Ender S1 Pro 3d printer](https://www.creality3dofficial.com/products/ender-3s1-pro-3d-printer). 
+
+When you begin printing prepare for 50 hours or so of print time. 6 hours each on the front, and 20 hours each on the rear slices. 
+![Printing1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Printing1.jpg)
+
+Once printing is complete you will need to cleanup the prints by removing support structure. 
+![SupportWaitingForRemoval1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SupportWaitingForRemoval1.jpeg)
+
+Removal is fairly striaght forward.
+![SupportRemoval1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SupportRemoval1.jpeg)
+![SupportRemoval2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SupportRemoval2.jpeg)
+![SupportRemoval3](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SupportRemoval3.jpeg)
+
+There will be quite a bit of waste from the support structures
+![SupportWaste1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SupportWaste1.jpeg)
+![SupportWaste2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SupportWaste2.jpeg)
+![Trash1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Trash1.jpeg)
+
+Once the prints are cleaned up we need to Gorilla Glue the parts together. 
+![SuperGlue1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SuperGlue1.jpeg)
+Add beads of superglue generously, and press the shell parts together. 
+![SuperGlue1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SuperGlue2.jpeg)
+![SuperGlue1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SuperGlue3.jpeg)
+
+These shells are ready to recieve the electronics to make them function. 
 ![Ready1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Ready1.jpeg)
 ![Ready2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Ready2.jpeg)
 
-![Printing1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Printing1.jpg)
-![Printing2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Printing2.jpg)
+### Transplant of GelBlaster XL electronics
+
+## Making a sentry gun
+
+### Required plumbing
+1) First remove all the supporting screws in the GelBlaster XL shell. 
+2) Transplant all the parts to the shell (you will have some bits left over)
+3) Connect the relay to the trigger
 
 ### Recommended additional parts<br>
 Co-computing:<br>
@@ -109,7 +139,7 @@ Stabilization & Mounting:<br>
 Power:
 [Volessence 50000 battery](https://www.amazon.com/Volessence-50000mAh-Laptop-Portable-Charger/dp/B07RNZZXRM)
 
-## OpenCV setup for Face tracking on RasPi4
+### OpenCV setup for Face tracking on RasPi4
 Current design relies on the following items:<br>
 [MX-28AT](https://www.robotis.us/dynamixel-mx-28at/)<br>
 [U2D2 Power Hub Board Set](https://www.robotis.us/u2d2-power-hub-board-set/)<br>
