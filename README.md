@@ -106,14 +106,15 @@ There will be quite a bit of waste from the support structures
 ![Trash1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Trash1.jpeg)
 
 Once the prints are cleaned up we need to Gorilla Glue the parts together. 
+![Ready1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Ready1.jpeg)
+![Ready2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Ready2.jpeg)
+Gel based glue will remove dripping from the equation. 
 ![SuperGlue1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SuperGlue1.jpeg)
 Add beads of superglue generously, and press the shell parts together. 
 ![SuperGlue1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SuperGlue2.jpeg)
 ![SuperGlue1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/SuperGlue3.jpeg)
 
-These shells are ready to recieve the electronics to make them function. 
-![Ready1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Ready1.jpeg)
-![Ready2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/Ready2.jpeg)
+These shells are now ready to recieve the electronics to make them function! 
 
 ### Transplant of GelBlaster XL electronics
 
