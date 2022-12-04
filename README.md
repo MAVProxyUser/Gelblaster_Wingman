@@ -139,7 +139,7 @@ Storage:<br>
 Stabilization & Mounting:<br>
 [Joby Compact Advanced](https://joby.com/ca-en/compact-advanced-tripod-for-smartphone-and-camera-jb01763-bww/) tripod. <br>
 
-Power:
+Power:<br>
 [Volessence 50000 battery](https://www.amazon.com/Volessence-50000mAh-Laptop-Portable-Charger/dp/B07RNZZXRM)
 
 ### OpenCV setup for Face tracking on RasPi4
