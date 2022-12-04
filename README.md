@@ -1,4 +1,4 @@
-# Gelblasters Wingman
+# Gelblaster Wingman
 
 [![Gelblasters](images/GelBlasterlogo.jpg)](https://gelblaster.com)
 
