@@ -119,8 +119,24 @@ These shells are now ready to recieve the electronics to make them function!
 ## Making a sentry gun
 
 ### Required plumbing
-First remove all the supporting screws in the GelBlaster XL shell. 
-
+First remove all the supporting screws in the GelBlaster XL shell, then remove the cosmetic shroud & barrel tip. Once the shell is open, remove the batery. <br>
+![RemoveBattery](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveBattery.jpg)
+Remove the screws and prepare to remove the gearbox.<br> 
+![RemoveGearbox](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveGearbox.jpg)
+Next remove the shim for the ammo hopper.<br> 
+![RemoveShim](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveShim.jpg)
+Then remove the LED array, and associated cables. Do NOT disconnect them from the main PCB.<br> 
+![RemoveLEDArray](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveLEDArray.jpg)
+Do the same with the other switches, and wires.<br> 
+![UnrouteWires](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/UnrouteWires.jpg)
+Remove the screws holding down the PCB, and the barrel in place.<br> 
+![RemovePCB](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemovePCB.jpg) 
+Take the screws out of the barrel<br>
+![RemoveBarrel](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveBarrel.jpg)
+Make sure to get the last few bits unscrewed<br>
+![RemoveFinalBits](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveFinalBits.jpg)
+Eventually you will have extacted the Gearbox in full.<br>
+![GearboxClean](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/GearboxClean.jpg)
 
 ### Transplant of GelBlaster XL electronics
 Transplant all the parts to the shell (you will have some bits left over). Connect the relay to the trigger
