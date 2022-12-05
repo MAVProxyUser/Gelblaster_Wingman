@@ -144,7 +144,6 @@ Transplant all the parts to the shell (you will have some bits left over). Make 
 Use all the screws you kept from the teardown. The logo LED's use two short screws, you should have four total.
 ![LEDLogo2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/LEDLogo2.jpg)
 Next start mounting the gearbox, and barrel. 
-![GearboxClean](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/GearboxClean.jpg)
 
 Connect the relay to the trigger
 
