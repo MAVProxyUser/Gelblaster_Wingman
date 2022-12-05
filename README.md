@@ -131,9 +131,9 @@ Do the same with the other switches, and wires.<br>
 ![UnrouteWires](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/UnrouteWires.jpg)
 Remove the screws holding down the PCB, and the barrel in place.<br> 
 ![RemovePCB](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemovePCB.jpg) 
-Take the screws out of the barrel<br>
+Take the screws out of the barrel.<br>
 ![RemoveBarrel](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveBarrel.jpg)
-Make sure to get the last few bits unscrewed<br>
+Make sure to get the last few bits unscrewed.<br>
 ![RemoveFinalBits](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveFinalBits.jpg)
 Eventually you will have extacted the Gearbox in full.<br>
 ![GearboxClean](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/GearboxClean.jpg)
