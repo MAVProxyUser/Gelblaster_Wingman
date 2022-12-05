@@ -139,7 +139,14 @@ Eventually you will have extacted the Gearbox in full.<br>
 ![GearboxClean](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/GearboxClean.jpg)
 
 ### Transplant of GelBlaster XL electronics
-Transplant all the parts to the shell (you will have some bits left over). Connect the relay to the trigger
+Transplant all the parts to the shell (you will have some bits left over). Make sure to put the Logo & PCB in place before you start!<br> 
+![LEDLogo1](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/LEDLogo1.jpg)
+Use all the screws you kept from the teardown. The logo LED's use two short screws, you should have four total.
+![LEDLogo2](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/LEDLogo2.jpg)
+Next start mounting the gearbox, and barrel. 
+![GearboxClean](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/GearboxClean.jpg)
+
+Connect the relay to the trigger
 
 ### More 3d printing
 For now the turrent mount is completely cobbled together. We use the base from a Dynamixel Planar Manipulator randomly found on Github:<br>
