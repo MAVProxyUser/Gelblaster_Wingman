@@ -116,14 +116,25 @@ Add beads of superglue generously, and press the shell parts together.
 
 These shells are now ready to recieve the electronics to make them function! 
 
-### Transplant of GelBlaster XL electronics
-
 ## Making a sentry gun
 
 ### Required plumbing
-1) First remove all the supporting screws in the GelBlaster XL shell. 
-2) Transplant all the parts to the shell (you will have some bits left over)
-3) Connect the relay to the trigger
+First remove all the supporting screws in the GelBlaster XL shell. 
+
+
+### Transplant of GelBlaster XL electronics
+Transplant all the parts to the shell (you will have some bits left over). Connect the relay to the trigger
+
+### More 3d printing
+For now the turrent mount is completely cobbled together. We use the base from a Dynamixel Planar Manipulator randomly found on Github:<br>
+https://github.com/adilzhaniwe/planar-manipulator-CAD/base_new.sldprt has been converted to .stl for you:<br>
+[base_new.stl](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/CC_BYNCSA_STL_Files/CC_BYNCSA_base_new.stl)<br>
+
+We also use a mashup of these two files, since the files are listed as CC BY-NC-ND licensed, we can not share the change)
+[Female Picatinny rail mount](https://www.thingiverse.com/thing:3821230)<br>
+[Robot Bracket](https://www.thingiverse.com/thing:98266) 
+
+We'll correct this shortly, by relesaing better solution. 
 
 ### Recommended additional parts<br>
 Co-computing:<br>
