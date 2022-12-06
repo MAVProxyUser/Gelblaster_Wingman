@@ -135,7 +135,7 @@ Take the screws out of the barrel.<br>
 ![RemoveBarrel](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveBarrel.jpg)
 Make sure to get the last few bits unscrewed.<br>
 ![RemoveFinalBits](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/RemoveFinalBits.jpg)
-Eventually you will have extacted the Gearbox in full.<br>
+Eventually you will have extracted the Gearbox in full.<br>
 ![GearboxClean](https://github.com/MAVProxyUser/Gelblaster_Wingman/raw/main/images/GearboxClean.jpg)
 
 ### Transplant of GelBlaster XL electronics
@@ -156,7 +156,7 @@ We also use a mashup of these two files, since the files are listed as CC BY-NC-
 [Female Picatinny rail mount](https://www.thingiverse.com/thing:3821230)<br>
 [Robot Bracket](https://www.thingiverse.com/thing:98266) 
 
-We'll correct this shortly, by relesaing better solution. 
+We'll correct this shortly, by releasang better solution. 
 
 ### Recommended additional parts<br>
 Co-computing:<br>
