@@ -35,3 +35,4 @@
 31. Use a rubber mallet gently if you need to coax it in. 
 32. Use m3x20 screws to secure the tilt servo, the holes in your revision may be off, so pay attention, if they are off start screws into the left side of the servo, then push through holes on arm, and use the threads on the servo to hold it in place temporarily. Drill out the proper hole pattern on the upper half of the servo. 5/64th will go through the servo threads. Then you can remove it and use 3/32
 33. Cut approximately 10 inches of 3d printer timing belt for your tilt mechanism
+34. Print a buckle, and use it to tension the tilt mechanism. 
