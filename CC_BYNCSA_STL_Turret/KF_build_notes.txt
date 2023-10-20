@@ -1,0 +1,37 @@
+1. take largest gear put on the tabe
+2. set one of the races into the recessed area
+3. use 4 m3x20mm screws to prop up the ring to the race height, doesn't matter if they stick out for now. 
+4. Set the roller bearings alternating -|-|-|-|-| until you run out. You will have space left on the ring. Expect to cover 75-80% of the ring with rollres
+5. Sandwich the top race over top of the bottom race and bearings. 
+6. use m3x10 or m3x12 max len to secure every other hole in the ring, do so from the lower side of the ring (bottom of the recessed side)
+  flip the ring over, and screw in using the gaps in the bottom plate
+  the part of the ring with the little recessed holes should be touching the table. 
+ some of the holes won't grip, but hold true and fill them all in anyway, we are using them for temporary structure. 
+ remove the screws you used to prop up the original mounting attempt as you go. 
+7. mark the holes on the bottom alternating, and then use that to mark the holes top side so you don't miss. I use gold sharpie. 
+8. use your thumb to rotate the lazy suzan so you can mark every other hole properly, and get the final few screws in. 
+9. You can label start or home so you can know when you rotated all the way 
+10. put the m2x20mm you used to prop the mount up away
+11. test center the large slew bearing, and the servo hering bone
+12 attach the servo hering bond to the mx28
+13. use a 1/32 bit to start the first hole in the top place, after centering the ring. Then drill it out with a 1/8 bit. 
+14. attach the slew bearing to the top plate hole, drill out the next one directly across. 
+15. use 2 m3x20 screws to securethe two, then drill out the remaining odd holes. 
+16. use m3x20 screws and nuts to secure all open holes. 
+17, push m4 nuts into the tilt wheel assembly. Use an m3 bolt and another nut as a stack up to leverage the nut in place. 
+18. Screw the tilt wheel into the u bracket with 4 m3x20 bolts
+19. Use 5/64th drill bit to start holes for the servo mount. Go through the holes in servo, then open up with 3/32 bit. 
+20. Use 3 nuts as a mount point. Use aluminum spacers to hold the mount up. m2.5x20 should work you should ultimately be able to use 4 spaces to secure.
+21. Use m3x10mm to secure the arms to the base. 
+22. Press nuts into the cylinder supports. 
+23. Press the cylinder supports through the bearing holes, and mount. Sand the cylinders as needed, spot check the fit on the hole + cylinder on the geared side. 
+24. Mount the non geared side using m3x20 mm, and an m3x30mm for the geared side. The nut should face the inside of the mechanism. Start the screws into the posts before attempting to mount
+25. I had problems with the cylinders so I used threaded spacers instead. The screws I used were 10-32. So I drilled 3/16 holes
+26. Start with the geared side, and get it mounted, mount it with the u bracket in place. 
+27. Then do the other side. If you use a longer spacer, you can hold it with channel locks, and it gives you room to adjust laterally
+28. Print female_pic_rail_w_screws.stl with a scaled z height of 117%
+29. Use 2 m3x16 screws and nuts to secure the pic rail to the mount
+30. You may want to clean up the pic mount on the Gelblasters with a file to make sure it slides in 
+31. Use a rubber mallet gently if you need to coax it in. 
+32. Use m3x20 screws to secure the tilt servo, the holes in your revision may be off, so pay attention, if they are off start screws into the left side of the servo, then push through holes on arm, and use the threads on the servo to hold it in place temporarily. Drill out the proper hole pattern on the upper half of the servo. 5/64th will go through the servo threads. Then you can remove it and use 3/32
+33. Cut approximately 10 inches of 3d printer timing belt for your tilt mechanism
