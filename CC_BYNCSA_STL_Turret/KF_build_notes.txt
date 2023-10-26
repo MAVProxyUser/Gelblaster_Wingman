@@ -38,3 +38,5 @@
 34. Print a buckle, and use it to tension the tilt mechanism. 
 35. Cut approximately 22 inches of 3d printer timing belt for the pan mechanism. 
 35. Print a buckle, and use it to tension the pan mechanism
+36. Mount the camera to the barrel using two M4x10 screws. 
+37. Use flex loom on the camera cable, secure to barrel, and then to U mount with zip ties. 
