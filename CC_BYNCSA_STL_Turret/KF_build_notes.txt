@@ -42,3 +42,4 @@
 37. Use flex loom on the camera cable, secure to barrel, and then to U mount with zip ties. 
 38. Use a 3/32 drill to bit to clean out 4 holes in a square on the bottom of the turret to facilitate a mount for the Joby tripod
 39. You should then be able to mount the turret to the Joby
+40. After encasing the wires in the flex loom, make sure to use hot glue to give the trigger wire some relief
