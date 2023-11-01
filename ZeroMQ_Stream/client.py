@@ -1,6 +1,12 @@
 import zmq
 import cv2
 import time
+import argparse
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='ZMQ Video Client')
+parser.add_argument('--gui', action='store_true', help='Display video feed in a GUI window')
+args = parser.parse_args()
 
 # ZeroMQ setup
 context = zmq.Context()
@@ -45,13 +51,19 @@ while True:
         client_elapsed_time = time.time() - client_start_time
         client_fps = client_frame_count / client_elapsed_time
 
-        # Display latencies and FPS on the frame
-        cv2.putText(frame, f"Transmission Latency: {transmission_latency:.2f} ms, Client FPS: {client_fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.imshow("Received Frame", frame)
-    
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        # Display stats
+        stats = f"Transmission Latency: {transmission_latency:.2f} ms, Client FPS: {client_fps:.2f}"
+        
+        if args.gui:
+            # Display latencies and FPS on the frame
+            cv2.putText(frame, stats, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.imshow("Received Frame", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        else:
+            print(stats)
 
-cv2.destroyAllWindows()
+if args.gui:
+    cv2.destroyAllWindows()
 
 
