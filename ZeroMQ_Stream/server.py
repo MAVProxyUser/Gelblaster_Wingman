@@ -2,6 +2,12 @@ import depthai as dai
 import time
 import zmq
 import cv2
+import argparse
+
+# Argument parser
+parser = argparse.ArgumentParser()
+parser.add_argument('--fps', type=int, default=60, help="FPS to set for the server's camera feed")
+args = parser.parse_args()
 
 # ZeroMQ setup
 context = zmq.Context()
@@ -13,9 +19,9 @@ pipeline = dai.Pipeline()
 
 # Define mono camera and output
 monoLeft = pipeline.createMonoCamera()
-monoLeft.setBoardSocket(dai.CameraBoardSocket.LEFT)
+monoLeft.setBoardSocket(dai.CameraBoardSocket.CAM_B)  # Using CAM_B to avoid deprecation
 monoLeft.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
-monoLeft.setFps(30)
+monoLeft.setFps(args.fps)
 
 xout = pipeline.createXLinkOut()
 xout.setStreamName("video")
@@ -49,8 +55,9 @@ with dai.Device(pipeline) as device:
         
         socket.send_pyobj({
             "type": "frame_data",
-            "frame": compressed_frame,
+            "frame": compressed_frame.tobytes(),
             "frame_number": frame_count,
-            "send_timestamp": time.time()
+            "send_timestamp": time.time(),
+            "server_fps": args.fps
         })
 

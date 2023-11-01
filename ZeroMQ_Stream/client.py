@@ -1,17 +1,18 @@
 import zmq
 import cv2
 import time
+import numpy as np
 import argparse
 
-# Parse command line arguments
-parser = argparse.ArgumentParser(description='ZMQ Video Client')
-parser.add_argument('--gui', action='store_true', help='Display video feed in a GUI window')
+# Argument parser
+parser = argparse.ArgumentParser()
+parser.add_argument('--gui', action='store_true', help="Display the video feed in a GUI window")
 args = parser.parse_args()
 
 # ZeroMQ setup
 context = zmq.Context()
 socket = context.socket(zmq.SUB)
-socket.connect("tcp://192.168.1.140:5555")
+socket.connect("tcp://localhost:5555")
 socket.setsockopt_string(zmq.SUBSCRIBE, "")
 
 # Initialize time_offset with a default value
@@ -38,7 +39,8 @@ while True:
         continue
 
     if data["type"] == "frame_data":
-        frame = cv2.imdecode(data["frame"], cv2.IMREAD_COLOR)
+        nparr = np.frombuffer(data["frame"], np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         # Adjust for time offset
         adjusted_send_timestamp = data["send_timestamp"] + time_offset
@@ -51,19 +53,17 @@ while True:
         client_elapsed_time = time.time() - client_start_time
         client_fps = client_frame_count / client_elapsed_time
 
-        # Display stats
-        stats = f"Transmission Latency: {transmission_latency:.2f} ms, Client FPS: {client_fps:.2f}"
-        
+        server_fps = data["server_fps"]
+
         if args.gui:
             # Display latencies and FPS on the frame
-            cv2.putText(frame, stats, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(frame, f"Transmission Latency: {transmission_latency:.2f} ms, Client FPS: {client_fps:.2f}, Server FPS: {server_fps}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             cv2.imshow("Received Frame", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         else:
-            print(stats)
+            print(f"Transmission Latency: {transmission_latency:.2f} ms, Client FPS: {client_fps:.2f}, Server FPS: {server_fps}")
 
-if args.gui:
-    cv2.destroyAllWindows()
+cv2.destroyAllWindows()
 
 
