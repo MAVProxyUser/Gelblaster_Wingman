@@ -14,12 +14,16 @@ context = zmq.Context()
 socket = context.socket(zmq.PUB)
 socket.bind("tcp://*:5555")
 
+# Setup the socket for receiving time sync requests from the client
+responder = context.socket(zmq.REP)
+responder.bind("tcp://*:5556")
+
 # Create pipeline
 pipeline = dai.Pipeline()
 
 # Define mono camera and output
 monoLeft = pipeline.createMonoCamera()
-monoLeft.setBoardSocket(dai.CameraBoardSocket.CAM_B)  # Using CAM_B to avoid deprecation
+monoLeft.setBoardSocket(dai.CameraBoardSocket.LEFT)
 monoLeft.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
 monoLeft.setFps(args.fps)
 
@@ -53,6 +57,7 @@ with dai.Device(pipeline) as device:
 
         ret, compressed_frame = cv2.imencode('.jpg', imgFrame.getCvFrame())
         
+        # Send frame data
         socket.send_pyobj({
             "type": "frame_data",
             "frame": compressed_frame.tobytes(),
@@ -60,4 +65,17 @@ with dai.Device(pipeline) as device:
             "send_timestamp": time.time(),
             "server_fps": args.fps
         })
+
+        # Listen for a time sync request from the client
+        try:
+            message = responder.recv_pyobj(flags=zmq.NOBLOCK)  # Non-blocking receive
+            if message and message["type"] == "client_time_sync":
+                # Respond with the current server time and the client's timestamp
+                responder.send_pyobj({
+                    "type": "server_time_sync",
+                    "client_timestamp": message["client_timestamp"],
+                    "server_timestamp": time.time()
+                })
+        except zmq.Again:
+            pass  # No message received, continue
 
