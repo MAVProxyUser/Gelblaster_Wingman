@@ -2,7 +2,7 @@ import zmq
 import base64
 import time
 from flask import Flask, render_template_string
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -33,7 +33,29 @@ TEMPLATE = """
     <script>
         let frameCount = 0;
         let startTime = new Date().getTime();
+        let timeOffset = 0; // Offset between client and server time
+
         const socket = io.connect(window.location.origin);
+
+        // Function to send a time sync request
+        function sendTimeSyncRequest() {
+            const clientTimestamp = new Date().getTime() / 1000;  // in seconds
+            socket.emit('client_time_sync', { client_time: clientTimestamp });
+        }
+
+        // Handle server time sync response
+        socket.on('server_time_sync', function(data) {
+            const serverTimestamp = data.server_time;
+            const clientTimestamp = data.client_time;
+            const roundTripTime = (new Date().getTime() / 1000) - clientTimestamp;
+            const serverTime = serverTimestamp + roundTripTime / 2;  // Estimate server time at the moment of message reception
+            const clientTime = new Date().getTime() / 1000;  // Current client time
+            timeOffset = serverTime - clientTime;  // Calculate the offset between client and server
+        });
+
+        // Periodically send time sync requests
+        setInterval(sendTimeSyncRequest, 5000);  // Every 5 seconds
+
         socket.on('new_image', function(data) {
             const imgElement = document.getElementById('receivedImage');
             const transmissionLatencyElement = document.getElementById('transmissionLatency');
@@ -41,8 +63,8 @@ TEMPLATE = """
             const serverFPSElement = document.getElementById('serverFPS');
 
             imgElement.src = "data:image/jpeg;base64," + data.image_data;
-            transmissionLatencyElement.textContent = data.transmission_latency.toFixed(2);
-            
+            transmissionLatencyElement.textContent = (data.transmission_latency + timeOffset * 1000).toFixed(2);  // Adjust latency with timeOffset
+
             frameCount++;
             let currentTime = new Date().getTime();
             let elapsedTime = (currentTime - startTime) / 1000;  // in seconds
@@ -73,6 +95,15 @@ def zmq_to_ws():
                 'transmission_latency': transmission_latency,
                 'server_fps': data["server_fps"]
             })
+
+@socketio.on('client_time_sync')
+def handle_client_time_sync(data):
+    client_timestamp = data['client_time']
+    server_timestamp = time.time()
+    emit('server_time_sync', {
+        'client_time': client_timestamp,
+        'server_time': server_timestamp
+    })
 
 if __name__ == '__main__':
     socketio.start_background_task(target=zmq_to_ws)
