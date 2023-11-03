@@ -1,8 +1,14 @@
 import zmq
 import base64
 import time
+import argparse
 from flask import Flask, render_template_string
 from flask_socketio import SocketIO, emit
+
+# Parsing command-line arguments for server host
+parser = argparse.ArgumentParser(description='Web proxy for ZeroMQ stream.')
+parser.add_argument('--server', type=str, default='localhost', help='Host for the ZeroMQ server.')
+args = parser.parse_args()
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -10,7 +16,7 @@ socketio = SocketIO(app)
 # ZeroMQ setup
 context = zmq.Context()
 zmq_socket = context.socket(zmq.SUB)
-zmq_socket.connect("tcp://localhost:5555")
+zmq_socket.connect(f"tcp://{args.server}:5555") 
 zmq_socket.setsockopt_string(zmq.SUBSCRIBE, "")
 
 # HTML template directly in Python code
@@ -35,7 +41,7 @@ TEMPLATE = """
         let startTime = new Date().getTime();
         let timeOffset = 0; // Offset between client and server time
 
-        const socket = io.connect(window.location.origin);
+        const socket = io.connect('http://{args.server}:8080');
 
         // Function to send a time sync request
         function sendTimeSyncRequest() {
