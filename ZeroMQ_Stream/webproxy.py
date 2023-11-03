@@ -19,6 +19,10 @@ zmq_socket = context.socket(zmq.SUB)
 zmq_socket.connect(f"tcp://{args.server}:5555") 
 zmq_socket.setsockopt_string(zmq.SUBSCRIBE, "")
 
+@socketio.on('connect')
+def client_connected():
+    print("Client connected!")
+
 # HTML template directly in Python code
 TEMPLATE = """
 <!DOCTYPE html>
@@ -41,7 +45,7 @@ TEMPLATE = """
         let startTime = new Date().getTime();
         let timeOffset = 0; // Offset between client and server time
 
-        const socket = io.connect('http://{args.server}:8080');
+        const socket = io.connect('http://' + window.location.hostname + ':8080');
 
         // Function to send a time sync request
         function sendTimeSyncRequest() {
