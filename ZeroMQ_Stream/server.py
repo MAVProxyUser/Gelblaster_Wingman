@@ -3,6 +3,7 @@ import time
 import zmq
 import cv2
 import argparse
+import numpy as np
 
 # Argument parser
 parser = argparse.ArgumentParser()
@@ -42,10 +43,46 @@ with dai.Device(pipeline) as device:
     }
     socket.send_pyobj(initial_time_message)
 
+    # Initialize background frame for motion detection
+    background_frame = None
+
+    # Define constants for motion detection
+    MIN_CONTOUR_AREA = 500  # Adjust this value based on your requirements
+    BACKGROUND_REFRESH_INTERVAL = 10  # Number of seconds to refresh the background
+
+    # Initialize variables for background refresh
+    last_background_update_time = time.time()
+
     frame_count = 0
     while True:
         imgFrame = q.get()
+        frame = imgFrame.getCvFrame()
         frame_count += 1
+        current_time = time.time()
+
+        # Convert frame to grayscale
+        gray_frame = cv2.GaussianBlur(frame, (21, 21), 0)
+
+        # Refresh background frame after a certain interval
+        if background_frame is None or (current_time - last_background_update_time) > BACKGROUND_REFRESH_INTERVAL:
+            background_frame = gray_frame
+            last_background_update_time = current_time
+            print("Background updated.")
+
+        # Calculate frame difference
+        frame_delta = cv2.absdiff(background_frame, gray_frame)
+        thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
+        thresh = cv2.dilate(thresh, None, iterations=2)
+        contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Filter contours by size and draw bounding boxes
+        for contour in contours:
+            if cv2.contourArea(contour) >= MIN_CONTOUR_AREA:
+                (x, y, w, h) = cv2.boundingRect(contour)
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                print(f"Bounding Box: {(x, y, x + w, y + h)}")
+            else:
+                print("No significant contours found.")
 
         # Periodic time sync every 100 frames
         if frame_count % 100 == 0:
@@ -55,9 +92,9 @@ with dai.Device(pipeline) as device:
             }
             socket.send_pyobj(sync_message)
 
-        ret, compressed_frame = cv2.imencode('.jpg', imgFrame.getCvFrame())
-        
-        # Send frame data
+        ret, compressed_frame = cv2.imencode('.jpg', frame)
+
+        # Send frame data with motion tracking information
         socket.send_pyobj({
             "type": "frame_data",
             "frame": compressed_frame.tobytes(),
@@ -78,4 +115,5 @@ with dai.Device(pipeline) as device:
                 })
         except zmq.Again:
             pass  # No message received, continue
+
 
