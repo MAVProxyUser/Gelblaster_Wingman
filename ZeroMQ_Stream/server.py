@@ -54,6 +54,7 @@ with dai.Device(pipeline) as device:
     last_background_update_time = time.time()
 
     frame_count = 0
+    largest_contour = None  # Variable to store the largest contour
     while True:
         imgFrame = q.get()
         frame = imgFrame.getCvFrame()
@@ -75,14 +76,21 @@ with dai.Device(pipeline) as device:
         thresh = cv2.dilate(thresh, None, iterations=2)
         contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Filter contours by size and draw bounding boxes
+        # Find the largest contour based on area
+        largest_area = 0
         for contour in contours:
-            if cv2.contourArea(contour) >= MIN_CONTOUR_AREA:
-                (x, y, w, h) = cv2.boundingRect(contour)
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                print(f"Bounding Box: {(x, y, x + w, y + h)}")
+            area = cv2.contourArea(contour)
+            if area >= MIN_CONTOUR_AREA and area > largest_area:
+                largest_area = area
+                largest_contour = contour
             else:
                 print("No significant contours found.")
+
+        # Draw bounding box for the largest contour
+        if largest_contour is not None:
+            (x, y, w, h) = cv2.boundingRect(largest_contour)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            print(f"Bounding Box: {(x, y, x + w, y + h)}")
 
         # Periodic time sync every 100 frames
         if frame_count % 100 == 0:
