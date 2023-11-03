@@ -7,12 +7,13 @@ import argparse
 # Argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument('--gui', action='store_true', help="Display the video feed in a GUI window")
+parser.add_argument('--server', type=str, default="192.168.1.140:5555", help="Server address in the format 'ip:port'")
 args = parser.parse_args()
 
 # ZeroMQ setup
 context = zmq.Context()
 socket = context.socket(zmq.SUB)
-socket.connect("tcp://localhost:5555")
+socket.connect(f"tcp://{args.server}")
 socket.setsockopt_string(zmq.SUBSCRIBE, "")
 
 # Initialize time_offset with a default value
