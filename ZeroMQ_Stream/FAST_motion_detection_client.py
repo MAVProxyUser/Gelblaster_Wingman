@@ -29,13 +29,17 @@ def clear_transformations(camera):
 # Clear transformations for all cameras upon connecting
 clear_transformations('left')
 clear_transformations('right')
+clear_transformations('color')
+
+# Create a FAST feature detector object
+fast_detector = cv2.FastFeatureDetector_create(threshold=80, nonmaxSuppression=True)
 
 # Optical flow parameters
-lk_params = dict(winSize=(31, 31), maxLevel=3, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-feature_params = dict(maxCorners=100, qualityLevel=0.3, minDistance=15, blockSize=7)
-MOVEMENT_THRESHOLD = 30
+lk_params = dict(winSize=(10, 10), maxLevel=2, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.02))
+MOVEMENT_THRESHOLD = 5  # Initial movement threshold
+MIN_NUM_FEATURES = 1  # Minimum number of features to track
 
-old_gray = None
+old_frame = None
 p0 = None
 
 while True:
@@ -46,36 +50,36 @@ while True:
     if frame is None or frame.size == 0:
         continue
 
-    if old_gray is not None and (frame.shape[0] != old_gray.shape[0] or frame.shape[1] != old_gray.shape[1]):
-        frame = cv2.resize(frame, (old_gray.shape[1], old_gray.shape[0]))
+    if old_frame is not None:
+        frame = cv2.resize(frame, (old_frame.shape[1], old_frame.shape[0]))
 
-    if old_gray is None:
-        old_gray = frame
-        p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
-        continue
+    # Re-detect features only if necessary
+    if old_frame is None or len(p0) < MIN_NUM_FEATURES:
+        old_frame = frame.copy()
+        keypoints = fast_detector.detect(old_frame, None)
+        p0 = np.array([kp.pt for kp in keypoints], dtype=np.float32).reshape(-1, 1, 2)
 
-    p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame, p0, None, **lk_params)
+    p1, st, err = cv2.calcOpticalFlowPyrLK(old_frame, frame, p0, None, **lk_params)
 
     if p1 is not None and st.any():
-        good_new = p1[st==1]
-        good_old = p0[st==1]
+        good_new = p1[st == 1]
+        good_old = p0[st == 1]
+
         movement = np.linalg.norm(good_new - good_old, axis=1)
         significant_movement = movement > MOVEMENT_THRESHOLD
 
         if significant_movement.any():
+            # Detected significant movement
             significant_points = good_new[significant_movement]
-            min_x, min_y = np.min(significant_points, axis=0)
-            max_x, max_y = np.max(significant_points, axis=0)
             center_point = significant_points.mean(axis=0)
 
-            bbox_details = {'type': 'bbox', 'start_point': (int(min_x), int(min_y)), 'end_point': (int(max_x), int(max_y)), 'color': (255, 0, 0), 'thickness': 2}
+            # Only sending dot details for significant movements
             dot_details = {'type': 'dot', 'center': (int(center_point[0]), int(center_point[1])), 'radius': 5, 'color': (255, 0, 0), 'thickness': -1}
-            send_transformation('left', 'bound', bbox_details)
-            send_transformation('right', 'bound', bbox_details)
             send_transformation('left', 'dot', dot_details)
             send_transformation('right', 'dot', dot_details)
 
-    old_gray = frame.copy()
-    p0 = good_new.reshape(-1, 1, 2) if p1 is not None else None
+        # Update the points for the next frame
+        p0 = good_new.reshape(-1, 1, 2)
 
+    old_frame = frame.copy()
 

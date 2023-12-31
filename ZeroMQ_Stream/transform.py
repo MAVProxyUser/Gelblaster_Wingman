@@ -54,13 +54,13 @@ send_transformation(camera='color', action='dot', details={
 }, apply_once=True, linger_duration=2)
 
 # Clear all transformations on the left camera
-#send_transformation(camera='left', action='clear', details={})
+send_transformation(camera='left', action='clear', details={})
 
 # Clear all transformations on the right camera
-#send_transformation(camera='right', action='clear', details={})
+send_transformation(camera='right', action='clear', details={})
 
 # Clear all transformations on the color camera
-#send_transformation(camera='color', action='clear', details={})
+send_transformation(camera='color', action='clear', details={})
 
 
 
