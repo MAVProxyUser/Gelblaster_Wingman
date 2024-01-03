@@ -1,6 +1,6 @@
 import dynamixel_sdk as sdk
 from dynamixel_sdk import DXL_LOBYTE, DXL_LOWORD, DXL_HIBYTE, DXL_HIWORD
-from pid_controller import PIDController
+from kiosk.pid_controller import PIDController
 
 import time
 

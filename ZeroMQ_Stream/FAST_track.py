@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from dynamixel_controller import DynamixelController
 from coordinate_system import CoordinateSystem
+from simple_pid import PID  # You might need to install this package
 
 # Setup ZeroMQ for frame receiving
 context = zmq.Context()
@@ -21,12 +22,16 @@ dynamixel_controller = DynamixelController("/dev/ttyUSB0", 1000000, 1, 2)
 fast_detector = cv2.FastFeatureDetector_create(threshold=80, nonmaxSuppression=True)
 
 # Optical flow parameters
-lk_params = dict(winSize=(10, 10), maxLevel=2, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.02))
-MOVEMENT_THRESHOLD = 5  # Initial movement threshold
+lk_params = dict(winSize=(10, 10), maxLevel=2, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 25, 0.03))
+MOVEMENT_THRESHOLD = 3  # Initial movement threshold
 MIN_NUM_FEATURES = 1  # Minimum number of features to track
 
 old_frame = None
 p0 = None
+
+# Initialize PID controllers for pan and tilt
+pan_pid = PID(0.5, 0.0, 0.0, setpoint=0)  # These constants are arbitrary and need tuning
+tilt_pid = PID(0.1, 0.0, 0.0, setpoint=0)  # These constants are arbitrary and need tuning
 
 # Home position for pan and tilt
 PAN_HOME = (2500 + 9000) // 2
@@ -97,9 +102,9 @@ def drive_dynamixels_and_display_roi():
                 pan_error = center_point[0] - frame.shape[1] / 2
                 tilt_error = center_point[1] - frame.shape[0] / 2
                 
-                # Assuming simple proportional control, you might want a PID controller here
-                pan_adjustment = -pan_error * 1  # These constants are arbitrary and need tuning
-                tilt_adjustment = -tilt_error * 0.5  # These constants are arbitrary and need tuning
+                # Use PID controllers to calculate adjustments
+                pan_adjustment = pan_pid(pan_error)
+                tilt_adjustment = tilt_pid(tilt_error)
 
                 # Update Dynamixel positions
                 new_pan_position = PAN_HOME + pan_adjustment

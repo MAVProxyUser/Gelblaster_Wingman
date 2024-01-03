@@ -115,7 +115,7 @@ with dai.Device(pipeline) as device:
                 apply_once = transform_command.get('apply_once', False)
                 linger_duration = transform_command.get('linger_duration', 0)
 
-                if action in ['text', 'bound', 'dot']:
+                if action in ['text', 'bbox', 'dot']:
                     if apply_once:
                         # Apply transformation for one frame and add to lingering if needed
                         frames[camera] = apply_transformations(frames[camera], [details])
