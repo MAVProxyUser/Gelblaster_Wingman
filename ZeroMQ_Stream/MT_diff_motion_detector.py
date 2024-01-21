@@ -21,9 +21,16 @@ prev_frame = None
 # Create a queue to store frames
 frame_queue = queue.Queue()
 
+# Initialize a list to store the last N bounding boxes
+last_N_boxes = []
+
+# Define the number of past frames to consider for smoothing
+N = 5
+
 # Function to detect motion
 def detect_motion(frame):
     global prev_frame
+    global last_N_boxes
 
     # If this is the first frame
     if prev_frame is None:
@@ -38,7 +45,7 @@ def detect_motion(frame):
     diff = cv2.absdiff(prev_frame, frame)
 
     # Threshold the diff image so that we get the foreground
-    threshold_value = 120 # Increased threshold value
+    threshold_value = 100 # Increased threshold value
     ret, threshold = cv2.threshold(diff, threshold_value, 255, cv2.THRESH_BINARY)
 
     # Find contours in the threshold image
@@ -62,10 +69,23 @@ def detect_motion(frame):
     # Get the bounding box of the largest contour
     x, y, w, h = cv2.boundingRect(largest_contour)
 
+    # Add the bounding box to the list of last N boxes
+    last_N_boxes.append((x, y, w, h))
+
+    # If we have more than N boxes, remove the oldest one
+    if len(last_N_boxes) > N:
+        last_N_boxes.pop(0)
+
+    # Compute the average bounding box
+    x_avg = int(sum(box[0] for box in last_N_boxes) / len(last_N_boxes))
+    y_avg = int(sum(box[1] for box in last_N_boxes) / len(last_N_boxes))
+    w_avg = int(sum(box[2] for box in last_N_boxes) / len(last_N_boxes))
+    h_avg = int(sum(box[3] for box in last_N_boxes) / len(last_N_boxes))
+
     # Update prev_frame
     prev_frame = frame
 
-    return {'type': 'bbox', 'start_point': (x, y), 'end_point': (x+w, y+h), 'color': (255, 255, 255), 'thickness': 2}
+    return {'type': 'bbox', 'start_point': (x_avg, y_avg), 'end_point': (x_avg+w_avg, y_avg+h_avg), 'color': (255, 255, 255), 'thickness': 2}
 
 # Function to send transformations to the server
 def send_transformation(camera, action, details):
