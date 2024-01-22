@@ -109,6 +109,7 @@ with dai.Device(pipeline) as device:
         try:
             transform_command = transform_socket.recv_pyobj(flags=zmq.NOBLOCK)
             if transform_command:
+                print(f"Sending command: {transform_command}")  # Added this line
                 camera = transform_command['camera']
                 action = transform_command['action']
                 details = transform_command['details']
@@ -170,5 +171,3 @@ with dai.Device(pipeline) as device:
             pass
 
         frame_count += 1  # Increment frame_count
-
-

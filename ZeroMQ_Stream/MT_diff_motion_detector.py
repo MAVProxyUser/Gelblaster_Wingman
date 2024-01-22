@@ -18,8 +18,8 @@ command_socket.connect("tcp://localhost:5557")
 # Initialize previous frame
 prev_frame = None
 
-# Create a queue to store frames
-frame_queue = queue.Queue()
+# Create a queue to store frames with a maximum size
+frame_queue = queue.Queue(maxsize=100)
 
 # Initialize a list to store the last N bounding boxes
 last_N_boxes = []
@@ -98,6 +98,7 @@ def send_transformation(camera, action, details):
             'apply_once': True
         }
         print(f"Sending command: {command}")  # Debugging output
+        print(f"Publishing bounding box data to: tcp://localhost:5557")  # New print statement
         command_socket.send_pyobj(command)
         response = command_socket.recv_pyobj()
         print(f"Received response: {response}")  # Debugging output
@@ -138,3 +139,9 @@ frame_thread.start()
 
 process_thread = threading.Thread(target=process_frames)
 process_thread.start()
+
+# Hypothetical point in code where you're done with the sockets
+# ...
+frame_socket.close()
+command_socket.close()
+context.term()
