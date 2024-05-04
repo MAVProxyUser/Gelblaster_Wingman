@@ -15,18 +15,14 @@ context = zmq.Context()
 socket = context.socket(zmq.PUB)
 socket.bind("tcp://*:5555")
 
-# New socket for receiving transformation commands
+# Additional sockets for transformation commands and time sync
 transform_socket = context.socket(zmq.REP)
 transform_socket.bind("tcp://*:5557")
-
-# Setup the socket for receiving time sync requests from the client
 responder = context.socket(zmq.REP)
 responder.bind("tcp://*:5556")
 
-# Create pipeline
+# Create pipeline and define cameras
 pipeline = dai.Pipeline()
-
-# Define mono cameras and outputs
 monoLeft = pipeline.createMonoCamera()
 monoLeft.setBoardSocket(dai.CameraBoardSocket.CAM_B)
 monoLeft.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
@@ -59,19 +55,24 @@ colorCam.preview.link(xoutColor.input)
 # Function to apply transformations
 def apply_transformations(frame, transformations, alpha=1.0):
     for transform in transformations:
+        color = tuple([int(c * alpha) for c in transform['color']])
         if transform['type'] == 'text':
-            text_color = tuple([int(c * alpha) for c in transform['color']])
-            cv2.putText(frame, transform['text'], transform['position'], cv2.FONT_HERSHEY_SIMPLEX, 
-                        transform['font_scale'], text_color, transform['thickness'])
+            adjusted_position = adjust_coordinates(frame, transform['position'])
+            cv2.putText(frame, transform['text'], adjusted_position, cv2.FONT_HERSHEY_SIMPLEX,
+                        transform['font_scale'], color, transform['thickness'])
         elif transform['type'] == 'bbox':
-            box_color = tuple([int(c * alpha) for c in transform['color']])
-            cv2.rectangle(frame, transform['start_point'], transform['end_point'], 
-                          box_color, transform['thickness'])
+            adjusted_start_point = adjust_coordinates(frame, transform['start_point'])
+            adjusted_end_point = adjust_coordinates(frame, transform['end_point'])
+            cv2.rectangle(frame, adjusted_start_point, adjusted_end_point, color, transform['thickness'])
         elif transform['type'] == 'dot':
-            dot_color = tuple([int(c * alpha) for c in transform['color']])
-            cv2.circle(frame, transform['center'], transform['radius'], 
-                       dot_color, transform['thickness'])
+            adjusted_center = adjust_coordinates(frame, transform['center'])
+            cv2.circle(frame, adjusted_center, transform['radius'], color, transform['thickness'])
     return frame
+
+def adjust_coordinates(frame, pos):
+    h, w = frame.shape[:2]
+    x, y = pos
+    return (w - x, h - y)
 
 # Store current transformations for each camera
 current_transformations = {
@@ -103,13 +104,18 @@ with dai.Device(pipeline) as device:
         # Convert color frame to black and white
         frameColorBW = cv2.cvtColor(frameColor, cv2.COLOR_BGR2GRAY)
 
+        # Rotate frames once upon capture
+        frameLeft = cv2.flip(frameLeft, -1)
+        frameRight = cv2.flip(frameRight, -1)
+        frameColorBW = cv2.flip(frameColorBW, -1)
+
         frames = {'left': frameLeft, 'right': frameRight, 'color': frameColorBW}
 
         # Check for transformation commands
         try:
             transform_command = transform_socket.recv_pyobj(flags=zmq.NOBLOCK)
             if transform_command:
-                print(f"Sending command: {transform_command}")  # Added this line
+                print(f"Received command: {transform_command}")
                 camera = transform_command['camera']
                 action = transform_command['action']
                 details = transform_command['details']
@@ -118,15 +124,13 @@ with dai.Device(pipeline) as device:
 
                 if action in ['text', 'bbox', 'dot']:
                     if apply_once:
-                        # Apply transformation for one frame and add to lingering if needed
                         frames[camera] = apply_transformations(frames[camera], [details])
                         if linger_duration > 0:
                             lingering_transformations.append({
-                                'camera': camera, 'details': details, 
+                                'camera': camera, 'details': details,
                                 'end_time': time.time() + linger_duration
                             })
                     else:
-                        # Set or add persistent transformation
                         current_transformations[camera].append(details)
                 elif action == 'clear':
                     current_transformations[camera] = []
@@ -167,7 +171,6 @@ with dai.Device(pipeline) as device:
                     "server_timestamp": time.time()
                 })
         except zmq.Again:
-            # No message received, continue
             pass
 
         frame_count += 1  # Increment frame_count
