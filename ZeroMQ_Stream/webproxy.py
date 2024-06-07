@@ -33,6 +33,10 @@ TEMPLATE = """
 </head>
 <body>
     <h2>Received Images:</h2>
+    <label><input type="checkbox" id="toggleLeft" checked> Show Left Camera</label>
+    <label><input type="checkbox" id="toggleRight" checked> Show Right Camera</label>
+    <label><input type="checkbox" id="toggleColor" checked> Show Color Camera</label>
+    <br>
     <img id="receivedImageLeft" width="320" height="240" alt="Streamed Image Left">
     <img id="receivedImageRight" width="320" height="240" alt="Streamed Image Right">
     <img id="receivedImageColor" width="320" height="240" alt="Streamed Image Color">
@@ -73,15 +77,21 @@ TEMPLATE = """
         setInterval(sendTimeSyncRequest, 5000);  // Every 5 seconds
 
         socket.on('new_image_left', function(data) {
-            updateImage('receivedImageLeft', data, 'left');
+            if (document.getElementById('toggleLeft').checked) {
+                updateImage('receivedImageLeft', data, 'left');
+            }
         });
 
         socket.on('new_image_right', function(data) {
-            updateImage('receivedImageRight', data, 'right');
+            if (document.getElementById('toggleRight').checked) {
+                updateImage('receivedImageRight', data, 'right');
+            }
         });
 
         socket.on('new_image_color', function(data) {
-            updateImage('receivedImageColor', data, 'color');
+            if (document.getElementById('toggleColor').checked) {
+                updateImage('receivedImageColor', data, 'color');
+            }
         });
 
         function updateImage(elementId, data, side) {
@@ -156,5 +166,7 @@ def handle_client_time_sync(data):
 if __name__ == '__main__':
     socketio.start_background_task(target=zmq_to_ws)
     socketio.run(app, host="0.0.0.0", port=8080)
+
+
 
 
