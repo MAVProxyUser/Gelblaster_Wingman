@@ -439,4 +439,3 @@ finally:
     if current_platform == 'Linux':
         GPIO.cleanup()
         portHandler.closePort()
-
