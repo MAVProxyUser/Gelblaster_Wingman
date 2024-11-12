@@ -58,6 +58,8 @@ MQTT_TOPIC_CONTROL = "dpad/commands"       # Topic for receiving commands
 MQTT_TOPIC_CAMERA = "camera/feed"          # Topic for publishing camera feed
 MQTT_TOPIC_SERVO_STATUS = "servo/status"   # Topic for publishing servo status
 MQTT_TOPIC_DEPTH = "camera/depth"          # Topic for publishing depth feed (only on Jetson)
+MQTT_TOPIC_PLATFORM = "server/platform"
+MQTT_TOPIC_PLATFORM_REQUEST = "server/platform_request"
 
 # Variables to store the latest command
 latest_command = {'pan_angle': 0.0, 'tilt_angle': -90.0}  # Initial angles
@@ -245,6 +247,8 @@ def on_connect(client, userdata, flags, reasonCode, properties):
         # Subscribe to necessary topics
         client.subscribe(MQTT_TOPIC_CONTROL)
         print(f"Subscribed to topic {MQTT_TOPIC_CONTROL}", flush=True)
+        client.subscribe(MQTT_TOPIC_PLATFORM_REQUEST)
+        print(f"Subscribed to platform request topic", flush=True)
     else:
         print(f"Failed to connect to MQTT broker. Reason code: {reasonCode}", flush=True)
 
@@ -269,6 +273,13 @@ def on_message(client, userdata, msg):
         with command_lock:
             latest_command['pan_angle'] = command.get('pan_angle', 0.0)
             latest_command['tilt_angle'] = command.get('tilt_angle', 0.0)
+
+        # Handle platform request
+        if msg.topic == MQTT_TOPIC_PLATFORM_REQUEST:
+            response = {
+                'platform': current_platform
+            }
+            client.publish(MQTT_TOPIC_PLATFORM, json.dumps(response))
 
     except Exception as e:
         print(f"Error processing MQTT message: {e}", flush=True)

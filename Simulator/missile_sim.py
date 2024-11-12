@@ -11,6 +11,7 @@ import json
 import sys
 import math
 import pygame  # Add this import at the top of the file
+import socket
 
 # Constants
 STEAM_DECK_WIDTH = 1280
@@ -32,7 +33,7 @@ PAN_ANGLE_MIN = -800  # Minimum pan angle in degrees
 PAN_ANGLE_MAX = 800   # Maximum pan angle in degrees
 
 # MQTT Configuration
-MQTT_BROKER = "10.42.0.1"
+MQTT_BROKER = "192.168.1.63"
 MQTT_PORT = 1883
 MQTT_TOPIC_CONTROL = "dpad/commands"   # Topic to publish commands
 MQTT_TOPIC_CAMERA = "camera/feed"      # Topic to subscribe to camera feed
@@ -61,6 +62,92 @@ PAN_KD = 0.05  # Derivative gain for pan
 TILT_KP = 0.1  # Proportional gain for tilt
 TILT_KI = 0.01  # Integral gain for tilt
 TILT_KD = 0.05  # Derivative gain for tilt
+
+# Add after MQTT configuration constants
+SERVER_PLATFORM = None  # Will store 'Linux' or 'Darwin'
+
+def detect_server_platform(mqtt_client):
+    """Detect if the turret server is running on Linux or Darwin."""
+    global SERVER_PLATFORM
+    
+    # Create a new topic for platform detection
+    MQTT_TOPIC_PLATFORM = "server/platform"
+    
+    # Variable to store the response
+    platform_response = {'platform': None}
+    platform_event = threading.Event()
+    
+    def on_platform_message(client, userdata, msg):
+        try:
+            data = json.loads(msg.payload.decode())
+            platform_response['platform'] = data.get('platform')
+            platform_event.set()
+        except Exception as e:
+            print(f"Error processing platform message: {e}")
+    
+    # Subscribe to platform response topic
+    mqtt_client.subscribe(MQTT_TOPIC_PLATFORM)
+    mqtt_client.message_callback_add(MQTT_TOPIC_PLATFORM, on_platform_message)
+    
+    # Request platform information
+    mqtt_client.publish("server/platform_request", "request")
+    
+    # Wait for response with timeout
+    if platform_event.wait(timeout=5.0):
+        SERVER_PLATFORM = platform_response['platform']
+        print(f"Connected to {SERVER_PLATFORM} turret server")
+    else:
+        print("Platform detection timed out, assuming Darwin")
+        SERVER_PLATFORM = 'Darwin'
+    
+    # Clean up subscription
+    mqtt_client.message_callback_remove(MQTT_TOPIC_PLATFORM)
+    mqtt_client.unsubscribe(MQTT_TOPIC_PLATFORM)
+    
+    return SERVER_PLATFORM
+
+# Add this class for Darwin servo simulation
+class ServoSimulator:
+    def __init__(self):
+        self.current_pan = 0.0
+        self.current_tilt = -90.0
+        self.target_pan = 0.0
+        self.target_tilt = -90.0
+        self.pan_speed = 300.0  # degrees per second
+        self.tilt_speed = 200.0  # degrees per second
+        self.last_update = time.time()
+    
+    def update(self):
+        """Update servo positions based on movement speed"""
+        current_time = time.time()
+        elapsed = current_time - self.last_update
+        self.last_update = current_time
+        
+        # Update pan
+        if self.current_pan != self.target_pan:
+            max_pan_move = self.pan_speed * elapsed
+            pan_diff = self.target_pan - self.current_pan
+            pan_move = min(abs(pan_diff), max_pan_move) * (1 if pan_diff > 0 else -1)
+            self.current_pan += pan_move
+        
+        # Update tilt
+        if self.current_tilt != self.target_tilt:
+            max_tilt_move = self.tilt_speed * elapsed
+            tilt_diff = self.target_tilt - self.current_tilt
+            tilt_move = min(abs(tilt_diff), max_tilt_move) * (1 if tilt_diff > 0 else -1)
+            self.current_tilt += tilt_move
+    
+    def set_target(self, pan, tilt):
+        """Set target angles for the servos"""
+        self.target_pan = max(PAN_ANGLE_MIN, min(PAN_ANGLE_MAX, pan))
+        self.target_tilt = max(TILT_ANGLE_MIN, min(TILT_ANGLE_MAX, tilt))
+    
+    def get_current_position(self):
+        """Get current servo positions"""
+        return self.current_pan, self.current_tilt
+
+# Add servo simulator instance at global scope
+servo_simulator = None if SERVER_PLATFORM == 'Linux' else ServoSimulator()
 
 class GameState:
     def __init__(self):
