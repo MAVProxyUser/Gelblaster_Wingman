@@ -21,13 +21,13 @@ SCREEN_HEIGHT = STEAM_DECK_HEIGHT
 BUILDING_COUNT = 5
 
 # Physical parameters
-PAN_ANGLE_MIN = -800  # Minimum pan angle in degrees
-PAN_ANGLE_MAX = 800   # Maximum pan angle in degrees
-PAN_ANGLE_RANGE = PAN_ANGLE_MAX - PAN_ANGLE_MIN  # Pan angle range
+PAN_ANGLE_MIN = -80   # Changed from -60 to -40 (shifted right by 20 degrees)
+PAN_ANGLE_MAX = 320    # Changed from 60 to 80 (shifted right by 20 degrees)
+PAN_ANGLE_RANGE = PAN_ANGLE_MAX - PAN_ANGLE_MIN  # Still 120 degrees total
 
-TILT_ANGLE_MAX = -50        # Maximum tilt angle
-TILT_ANGLE_MIN = -160       # Minimum tilt angle
-TILT_ANGLE_RANGE = TILT_ANGLE_MAX - TILT_ANGLE_MIN  # Tilt angle range
+TILT_ANGLE_MAX = -160   # Keep current tilt settings
+TILT_ANGLE_MIN = -340
+TILT_ANGLE_RANGE = TILT_ANGLE_MAX - TILT_ANGLE_MIN
 
 # MQTT Configuration
 MQTT_BROKER = "10.42.0.1"
@@ -68,28 +68,32 @@ class GameState:
 
 class ControllerState:
     def __init__(self):
+        # Initialize dot position to center of screen
         self.dot_x = GAME_SCREEN_WIDTH // 2
-        self.dot_y = SCREEN_HEIGHT - 1  # Set dot_y to correspond to the lowest tilt angle
-        self.pan_speed = 600  # Doubled from 300
-        self.tilt_speed = 300  # Kept the same
-        self.pan_angle = 0.0    # Pan angle in degrees (relative to home)
-        self.tilt_angle = TILT_ANGLE_MIN   # Set initial tilt angle to minimum
+        self.dot_y = SCREEN_HEIGHT // 2
+        self.pan_speed = 200
+        self.reticle_speed = 400
+        self.mode = "manual"  # Start in manual mode
+        self.relay = False
+        self.reverse_pan = False
+        self.reverse_tilt = True
+        self.pan_aggr = 8.0
+        self.tilt_aggr = 4.0
+        self.auto_mode = False
+        # Add these if they're used elsewhere
+        self.pan_angle = 0
+        self.tilt_angle = 0
         self.trigger_pressed = False
+        self.pan_correction = 0
+        self.tilt_correction = 0
+        self.accuracy = 100  # Default accuracy
+        self.tilt_speed = 200  # Add if needed
+
+        # Add directional button states
         self.left_pressed = False
         self.right_pressed = False
         self.up_pressed = False
         self.down_pressed = False
-        self.auto_mode = False  # Set to False by default
-        self.accuracy = 100     # Default accuracy value (0-100)
-        self.target_x = GAME_SCREEN_WIDTH // 2
-        self.target_y = SCREEN_HEIGHT // 2
-        self.reticle_speed = 1200  # Increased from 500
-        self.pan_correction = 0.0
-        self.tilt_correction = 0.0
-        self.reverse_pan = False
-        self.reverse_tilt = True  # Set to True by default
-        self.pan_aggr = 1.0  # Changed to start at 1
-        self.tilt_aggr = 1.0  # Changed to start at 1
 
 def on_connect(client, userdata, flags, rc, properties=None):
     global mqtt_connected
@@ -168,15 +172,17 @@ def find_input_devices():
             if event_type == 'EV_KEY':
                 for code, _ in event_codes:
                     if code in ('BTN_GAMEPAD', 'BTN_SOUTH', 'BTN_A', 'BTN_START', 'BTN_EAST', 'BTN_B',
-                                'BTN_LEFT', 'BTN_RIGHT', 'BTN_MIDDLE'):
+                                'BTN_LEFT', 'BTN_RIGHT', 'BTN_DPAD_LEFT', 'BTN_DPAD_RIGHT', 'BTN_DPAD_UP', 'BTN_DPAD_DOWN'):
                         is_input_device = True
                         break
             if is_input_device:
                 break
         if is_input_device or 'gamepad' in device.name.lower() or 'controller' in device.name.lower() \
-                or 'touchscreen' in device.name.lower() or 'mouse' in device.name.lower():
+                or 'touchscreen' in device.name.lower():
             print(f"Found input device: {device.path}, name: {device.name}")
             input_devices.append(device)
+        else:
+            print(f"Skipping device: {device.path}, name: {device.name}")
     return input_devices
 
 def spawn_incoming_missiles(game_state):
@@ -249,19 +255,19 @@ def update_servo_position(target_x, target_y, current_pan, current_tilt, control
         new_pan = current_pan + (pan_adjustment * smoothing_factor)
         new_tilt = current_tilt + (tilt_adjustment * smoothing_factor)
     else:
-        # For game mode, we want more direct positioning
-        # Convert screen coordinates to angles
-        x_angle = ((target_x - center_x) / center_x) * (PAN_ANGLE_MAX)
-        y_angle = -((target_y - center_y) / center_y) * (TILT_ANGLE_MAX)
+        # For game mode, map screen coordinates directly to full pan range
+        x_ratio = (target_x / GAME_SCREEN_WIDTH)  # Will be 0 to 1
+        y_ratio = (target_y / SCREEN_HEIGHT)
+        
+        # Map x_ratio from 0-1 to full pan range
+        new_pan = PAN_ANGLE_MIN + (x_ratio * (PAN_ANGLE_MAX - PAN_ANGLE_MIN))
+        new_tilt = TILT_ANGLE_MIN + (y_ratio * (TILT_ANGLE_MAX - TILT_ANGLE_MIN))
 
         # Apply reverse settings
         if controller_state.reverse_pan:
-            x_angle = -x_angle
+            new_pan = -new_pan
         if controller_state.reverse_tilt:
-            y_angle = -y_angle
-
-        new_pan = x_angle
-        new_tilt = y_angle
+            new_tilt = -new_tilt
 
     # Clamp angles to valid ranges
     new_pan = max(PAN_ANGLE_MIN, min(PAN_ANGLE_MAX, new_pan))
@@ -483,7 +489,12 @@ def main_loop():
             r, w, x = select.select(input_fds.keys(), [], [], 0)
             for fd in r:
                 input_device = input_fds[fd]
+                device_name = input_device.name.lower()
                 for event in input_device.read():
+                    # Skip processing if the event is from a mouse device
+                    if 'mouse' in device_name:
+                        continue  # Ignore events from mouse devices
+
                     if event.type == ecodes.EV_KEY:
                         if event.value == 1:  # Key pressed
                             if event.code == ecodes.KEY_LEFT:
@@ -537,10 +548,8 @@ def main_loop():
                                 controller_state.up_pressed = False
                                 controller_state.down_pressed = False
                     elif event.type == ecodes.EV_REL:
-                        if event.code == ecodes.REL_X:
-                            controller_state.dot_x += event.value
-                        elif event.code == ecodes.REL_Y:
-                            controller_state.dot_y += event.value
+                        # Optional: Remove or comment out this section to ignore EV_REL events
+                        pass  # Ignore relative movement events
 
         # Handle keyboard input (exit on 'q' or ESC)
         key = cv2.waitKey(1) & 0xFF
@@ -550,80 +559,45 @@ def main_loop():
 
         # Handle mouse clicks and touch events
         def mouse_callback(event, x, y, flags, param):
-            global controller_state, game_state, client
-            nonlocal running  # Now running is properly bound
-            
-            if event == cv2.EVENT_LBUTTONDOWN:
-                if x < CONTROL_CENTER_WIDTH:
-                    # Check which button was pressed
-                    for button_name, button_info in buttons.items():
-                        x1, y1, x2, y2 = button_info['rect']
-                        if x1 <= x <= x2 and y1 <= y <= y2:
-                            if button_name == 'display_mode':
-                                # Toggle between "Game" and "Live" modes
-                                game_state.display_mode = "Live" if game_state.display_mode == "Game" else "Game"
-                                print(f"Switched to {game_state.display_mode} mode")
-                            elif button_name == 'auto':
-                                controller_state.auto_mode = True
-                                buttons['auto']['active'] = True
-                                buttons['manual']['active'] = False
-                            elif button_name == 'manual':
-                                controller_state.auto_mode = False
-                                buttons['auto']['active'] = False
-                                buttons['manual']['active'] = True
-                            elif button_name == 'restart':
-                                game_state = GameState()
-                                controller_state.accuracy = 100
-                                spawn_incoming_missiles(game_state)
-                                print("Game restarted by clicking 'Restart' button")
-                            elif button_name == 'accuracy_minus':
-                                controller_state.accuracy = max(0, controller_state.accuracy - 1)
-                            elif button_name == 'accuracy_plus':
-                                controller_state.accuracy = min(100, controller_state.accuracy + 1)
-                            elif button_name == 'difficulty_minus':
-                                game_state.difficulty = max(1, game_state.difficulty - 1)
-                                spawn_incoming_missiles(game_state)
-                            elif button_name == 'difficulty_plus':
-                                game_state.difficulty = min(10, game_state.difficulty + 1)
-                                spawn_incoming_missiles(game_state)
-                            elif button_name == 'handicap_minus':
-                                game_state.handicap = max(0, game_state.handicap - 1)
-                            elif button_name == 'handicap_plus':
-                                game_state.handicap = min(game_state.difficulty - 1, game_state.handicap + 1)
-                            elif button_name == 'exit':
-                                print("Exit button clicked")
-                                running = False  # Set flag to exit the main loop
-                            elif button_name == 'mode_dropdown':
-                                game_state.display_mode = "Live" if game_state.display_mode == "Game" else "Game"
-                            elif button_name == 'pan_aggr_minus':
-                                controller_state.pan_aggr = max(1, controller_state.pan_aggr - 1)
-                            elif button_name == 'pan_aggr_plus':
-                                controller_state.pan_aggr = min(10, controller_state.pan_aggr + 1)
-                            elif button_name == 'tilt_aggr_minus':
-                                controller_state.tilt_aggr = max(1, controller_state.tilt_aggr - 1)
-                            elif button_name == 'tilt_aggr_plus':
-                                controller_state.tilt_aggr = min(10, controller_state.tilt_aggr + 1)
-                            elif button_name == 'reverse_pan':
-                                controller_state.reverse_pan = not controller_state.reverse_pan
-                                buttons['reverse_pan']['active'] = controller_state.reverse_pan
-                            elif button_name == 'reverse_tilt':
-                                controller_state.reverse_tilt = not controller_state.reverse_tilt
-                                buttons['reverse_tilt']['active'] = controller_state.reverse_tilt
-                elif game_state.display_mode == "Game":
-                    # Click is in the game area
-                    controller_state.dot_x = x - CONTROL_CENTER_WIDTH
-                    controller_state.dot_y = y
-                    controller_state.trigger_pressed = True
-                    fire_player_missile(game_state, controller_state, client)
+            global controller_state, game_state
+            nonlocal running
 
-            elif event == cv2.EVENT_LBUTTONUP:
-                controller_state.trigger_pressed = False
+            # Only process touchscreen taps (left button down) in the control panel area
+            if event == cv2.EVENT_LBUTTONDOWN and x < CONTROL_CENTER_WIDTH:
+                # Process control panel button presses
+                for button_name, button_info in buttons.items():
+                    x1, y1, x2, y2 = button_info['rect']
+                    if x1 <= x <= x2 and y1 <= y <= y2:
+                        # Handle button actions here
+                        if button_name == 'display_mode':
+                            game_state.display_mode = "Live" if game_state.display_mode == "Game" else "Game"
+                            print(f"Switched to {game_state.display_mode} mode")
+                        elif button_name == 'auto':
+                            controller_state.auto_mode = True
+                            buttons['auto']['active'] = True
+                            buttons['manual']['active'] = False
+                        elif button_name == 'manual':
+                            controller_state.auto_mode = False
+                            buttons['auto']['active'] = False
+                            buttons['manual']['active'] = True
+                        elif button_name == 'restart':
+                            print("Game restarted by clicking 'Restart' button")
+                            game_state = GameState()
+                            controller_state.accuracy = 100
+                            spawn_incoming_missiles(game_state)
+                        elif button_name == 'exit':
+                            print("Exit button clicked")
+                            running = False
+                        elif button_name == 'reverse_pan':
+                            controller_state.reverse_pan = not controller_state.reverse_pan
+                            buttons['reverse_pan']['active'] = controller_state.reverse_pan
+                        elif button_name == 'reverse_tilt':
+                            controller_state.reverse_tilt = not controller_state.reverse_tilt
+                            buttons['reverse_tilt']['active'] = controller_state.reverse_tilt
+                        # Handle other buttons as needed
 
-            elif event == cv2.EVENT_MOUSEMOVE:
-                # If in manual mode and mouse is moved in game area, update reticle position
-                if not controller_state.auto_mode and x >= CONTROL_CENTER_WIDTH:
-                    controller_state.dot_x = x - CONTROL_CENTER_WIDTH
-                    controller_state.dot_y = y
+            # Ignore all other mouse events
+            return
 
         cv2.setMouseCallback('Missile Command Game', mouse_callback)
 
@@ -1264,7 +1238,7 @@ def detect_green_object(frame):
                     # Visual indicator that we're triggering
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 4)
                     
-                    # Continuously send MQTT commands to trigger relay
+                    # Continuously send MQTT commands to trigger relay while INSIDE the box
                     if mqtt_connected:
                         data = {
                             'pan_angle': controller_state.pan_angle,
@@ -1272,17 +1246,12 @@ def detect_green_object(frame):
                             'relay': 'on'
                         }
                         client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
-                        client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
-                        client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
-                        
-                        # Small delay to prevent overwhelming MQTT broker
-                        time.sleep(0.01)
                 else:
-                    # Draw normal green box when not auto-triggering
+                    # Draw normal green box when not triggering
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                     
-                    # Turn off relay if in auto mode and outside box
-                    if controller_state.auto_mode and mqtt_connected:
+                    # Turn off relay when outside box
+                    if mqtt_connected:
                         data = {
                             'pan_angle': controller_state.pan_angle,
                             'tilt_angle': controller_state.tilt_angle,

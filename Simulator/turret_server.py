@@ -140,30 +140,93 @@ if current_platform == 'Linux':
     groupSyncWrite = GroupSyncWrite(
         portHandler, packetHandler, ADDR_GOAL_POSITION, LEN_GOAL_POSITION)
 
-# Function to convert angle to servo position (only on Linux)
-def angle_to_servo_position(dxl_id, angle_in_degrees):
-    if current_platform == 'Linux':
-        # Define constants
-        degrees_per_unit = 360.0 / 4096  # Degrees per unit
-        center_position = 2048  # Center position for 0 degrees
+    # Near the top with other constants
+    # Servo angle limits and initial positions
+    INITIAL_TILT_ANGLE = -240  # Initial tilt angle at boot
+    TILT_ANGLE_MAX = -140       # Maximum upward angle
+    TILT_ANGLE_MIN = -340      # Maximum downward angle
+    PAN_ANGLE_MIN = -1200      # Maximum pan left
+    PAN_ANGLE_MAX = 1200       # Maximum pan right
 
-        # Map angle_in_degrees to position
-        dxl_goal_position = center_position + int(angle_in_degrees / degrees_per_unit)
+    # Operating mode settings
+    OPERATING_MODE = 4         # Extended position control mode (multi-turn)
+    MAX_POSITION_VALUE = 4095  # Maximum position value
+    MIN_POSITION_VALUE = 0     # Minimum position value
+    POSITION_CENTER = 2048     # Center position
 
-        # Clamp the position within valid range
-        min_position = 0
-        max_position = 4095
-        dxl_goal_position = max(min_position, min(dxl_goal_position, max_position))
-        return dxl_goal_position
-    else:
-        # Placeholder for other platforms
-        return 0
+    def initialize_servo(dxl_id):
+        """Initialize a servo with extended position control mode settings"""
+        try:
+            # Set operating mode to extended position control mode (multi-turn) for pan
+            if dxl_id == DXL1_ID:
+                mode = OPERATING_MODE  # Extended position mode for pan
+            else:
+                mode = 3  # Position control mode for tilt
+            
+            dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(
+                portHandler, dxl_id, 11, mode)  # Address 11 is operating mode
+            if dxl_comm_result != COMM_SUCCESS:
+                print(f"Failed to set operating mode for ID {dxl_id}: {packetHandler.getTxRxResult(dxl_comm_result)}", flush=True)
+                return False
+
+            # Set to maximum torque
+            dxl_comm_result, dxl_error = packetHandler.write2ByteTxRx(
+                portHandler, dxl_id, 14, 1023)  # Address 14 is max torque
+            if dxl_comm_result != COMM_SUCCESS:
+                print(f"Failed to set max torque for ID {dxl_id}: {packetHandler.getTxRxResult(dxl_comm_result)}", flush=True)
+                return False
+
+            print(f"Successfully initialized servo ID {dxl_id}", flush=True)
+            return True
+            
+        except Exception as e:
+            print(f"Error initializing servo ID {dxl_id}: {str(e)}", flush=True)
+            return False
+
+    def angle_to_servo_position(dxl_id, angle_in_degrees):
+        if current_platform == 'Linux':
+            try:
+                if dxl_id == DXL1_ID:  # Pan servo
+                    # For multi-turn mode, we need to map our angle differently
+                    # Each rotation is 4096 positions
+                    rotations = angle_in_degrees / 360.0
+                    position_offset = int(rotations * 4096)
+                    dxl_goal_position = POSITION_CENTER + position_offset
+                    
+                    # Debug output
+                    print(f"Pan angle {angle_in_degrees}° -> {rotations} rotations -> position {dxl_goal_position}", flush=True)
+                    return dxl_goal_position
+                else:  # Tilt servo
+                    # Normal single-turn mapping for tilt
+                    degrees_per_unit = 360.0 / 4096
+                    angle_offset = angle_in_degrees + 140  # Center at -140 degrees
+                    dxl_goal_position = POSITION_CENTER + int(angle_offset / degrees_per_unit)
+                    dxl_goal_position = max(MIN_POSITION_VALUE, min(MAX_POSITION_VALUE, dxl_goal_position))
+                    
+                    # Debug output
+                    print(f"Tilt angle {angle_in_degrees}° -> position {dxl_goal_position}", flush=True)
+                    return dxl_goal_position
+                    
+            except Exception as e:
+                print(f"Error converting angle to position: {e}", flush=True)
+                return POSITION_CENTER
+        else:
+            return 0
+
+    # In the main initialization section
+    if __name__ == '__main__':
+        # ... existing initialization code ...
+        
+        # Initialize each servo
+        if not initialize_servo(DXL1_ID) or not initialize_servo(DXL2_ID):
+            print("Failed to initialize servos", flush=True)
+            sys.exit(1)
 
 # Servo update thread function
 def servo_update_thread():
     if current_platform == 'Linux':
         # Move to initial position immediately
-        initial_tilt_position = angle_to_servo_position(DXL2_ID, -90.0)
+        initial_tilt_position = angle_to_servo_position(DXL2_ID, INITIAL_TILT_ANGLE)
         param_initial_tilt = [
             DXL_LOBYTE(DXL_LOWORD(initial_tilt_position)),
             DXL_HIBYTE(DXL_LOWORD(initial_tilt_position)),
@@ -175,8 +238,12 @@ def servo_update_thread():
         if dxl_comm_result != COMM_SUCCESS:
             print(f"Initial tilt position set failed: {packetHandler.getTxRxResult(dxl_comm_result)}", flush=True)
         else:
-            print("Initial tilt position set to -90 degrees", flush=True)
+            print(f"Initial tilt position set to {INITIAL_TILT_ANGLE} degrees", flush=True)
         groupSyncWrite.clearParam()
+
+        # Also update the latest_command to match the initial position
+        with command_lock:
+            latest_command['tilt_angle'] = INITIAL_TILT_ANGLE
 
         while True:
             try:
