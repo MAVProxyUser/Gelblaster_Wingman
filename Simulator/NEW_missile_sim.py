@@ -95,6 +95,8 @@ class ControllerState:
         self.up_pressed = False
         self.down_pressed = False
 
+        self.invert_auto_trigger = False
+
 def on_connect(client, userdata, flags, rc, properties=None):
     global mqtt_connected
     if rc == 0:
@@ -704,7 +706,7 @@ def main_loop():
                         current_frame = latest_frame.copy()
                         current_frame = cv2.resize(current_frame, (GAME_SCREEN_WIDTH, SCREEN_HEIGHT))
                         # Process frame to detect green objects
-                        display_image, center_x, center_y, bounding_box = detect_green_object(current_frame)
+                        display_image, center_x, center_y, bounding_box = detect_green_object(current_frame, controller_state)
                         if center_x is not None and center_y is not None:
                             # Update servo position to track green object
                             new_pan, new_tilt = update_servo_position(
@@ -796,7 +798,7 @@ def main_loop():
                     # Resize frame to match game display size
                     current_frame = cv2.resize(current_frame, (GAME_SCREEN_WIDTH, SCREEN_HEIGHT))
                     # Process frame to detect green objects
-                    display_image, center_x, center_y, bounding_box = detect_green_object(current_frame)
+                    display_image, center_x, center_y, bounding_box = detect_green_object(current_frame, controller_state)
                 else:
                     # Create blank display if no frame is available
                     display_image = np.zeros((SCREEN_HEIGHT, GAME_SCREEN_WIDTH, 3), dtype=np.uint8)
@@ -1165,7 +1167,7 @@ def create_game_display(game_state, controller_state, background):
     cv2.circle(display_image, (int(controller_state.dot_x), int(controller_state.dot_y)), 5, (0, 0, 255), -1)
     return display_image
 
-def detect_green_object(frame):
+def detect_green_object(frame, controller_state):
     """
     Detects green objects in the frame and handles continuous relay triggering
     """
@@ -1204,64 +1206,48 @@ def detect_green_object(frame):
 
     # Find contours
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    target_acquired = False  # Initialize target_acquired for each loop
+
     if contours:
-        # Find the largest contour
         largest_contour = max(contours, key=cv2.contourArea)
         if cv2.contourArea(largest_contour) > 500:
-            # Compute the center of the contour
             M = cv2.moments(largest_contour)
             if M['m00'] != 0:
                 target_x = int(M['m10'] / M['m00'])
                 target_y = int(M['m01'] / M['m00'])
-                # Draw a red dot at the center of the detected green object
-                cv2.circle(frame, (target_x, target_y), 5, (0, 0, 255), -1)
-
-                # Get bounding box
                 x, y, w, h = cv2.boundingRect(largest_contour)
-
-                # Draw the bounding box
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-                # Draw offset lines from center reticle to target
-                cv2.line(frame, (center_x, center_y), (target_x, target_y), (0, 255, 255), 1)
-
-                # Calculate and display offset
-                offset_x = target_x - center_x
-                offset_y = target_y - center_y
-
-                # Add offset text
-                cv2.putText(frame, f"Offset: ({offset_x}, {offset_y})", 
-                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
                 # Check if center reticle is inside bounding box
                 if (x <= center_x <= x + w) and (y <= center_y <= y + h):
                     # Visual indicator that we're triggering
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 4)
-                    
-                    # Continuously send MQTT commands to trigger relay while INSIDE the box
-                    if mqtt_connected:
-                        data = {
-                            'pan_angle': controller_state.pan_angle,
-                            'tilt_angle': controller_state.tilt_angle,
-                            'relay': 'on'
-                        }
-                        client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
+                    target_acquired = True
                 else:
-                    # Draw normal green box when not triggering
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    
-                    # Turn off relay when outside box
-                    if mqtt_connected:
-                        data = {
-                            'pan_angle': controller_state.pan_angle,
-                            'tilt_angle': controller_state.tilt_angle,
-                            'relay': 'off'
-                        }
-                        client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
 
-                return frame, target_x, target_y, (x, y, w, h)
-
-    return frame, None, None, None
+    # In auto mode, simulate trigger press when centered on target
+    if mqtt_connected and controller_state.auto_mode:
+        aim_x = GAME_SCREEN_WIDTH // 2
+        aim_y = SCREEN_HEIGHT // 2
+        if target_acquired and (x <= aim_x <= x + w and y <= aim_y <= y + h):
+            data = {
+                'pan_angle': controller_state.pan_angle,
+                'tilt_angle': controller_state.tilt_angle,
+                'relay': 'off'  # Same as manual trigger press
+            }
+            client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
+    
+    # In manual mode, only send command when trigger pressed
+    elif mqtt_connected and not controller_state.auto_mode:
+        if controller_state.trigger_pressed:
+            data = {
+                'pan_angle': controller_state.pan_angle,
+                'tilt_angle': controller_state.tilt_angle,
+                'relay': 'off'  # Send shoot command when trigger pressed
+            }
+            client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
+    
+    return frame, target_x, target_y, (x, y, w, h) if contours else (frame, None, None, None)
 
 if __name__ == '__main__':
     main_loop()
