@@ -51,6 +51,10 @@ laser_sound = None
 # MQTT connection status
 mqtt_connected = False
 
+# At the top of the file with other constants
+RELAY_ACTIVATE = 'off'    # Relay is "normally closed" - sending 'off' activates it
+RELAY_DEACTIVATE = 'on'   # Sending 'on' deactivates the normally closed relay
+
 class GameState:
     def __init__(self):
         # Initialize buildings
@@ -1209,33 +1213,37 @@ def detect_green_object(frame, controller_state):
             aim_x = frame.shape[1] // 2
             aim_y = frame.shape[0] // 2
             if x <= aim_x <= x + w and y <= aim_y <= y + h:
-                # Target acquired - draw red rectangle
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                # When crosshair is inside box - turn red AND cycle trigger
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)  # BGR format: Red
                 target_acquired = True
+                
+                # Handle MQTT - cycle trigger rapidly when on target
+                if mqtt_connected and controller_state.auto_mode:
+                    data = {
+                        'pan_angle': controller_state.pan_angle,
+                        'tilt_angle': controller_state.tilt_angle,
+                        'relay': 'off' if time.time() % 0.2 < 0.1 else 'on'  # Toggle every 0.1 seconds
+                    }
+                    client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
+            else:
+                # When crosshair is outside box - turn green AND stop trigger
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)  # BGR format: Green
+                target_acquired = False
+                
+                # Handle MQTT - keep trigger off when not on target
+                if mqtt_connected and controller_state.auto_mode:
+                    data = {
+                        'pan_angle': controller_state.pan_angle,
+                        'tilt_angle': controller_state.tilt_angle,
+                        'relay': 'off'  # Not shooting when outside box
+                    }
+                    client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
 
         # Draw crosshair at center
         center_x = frame.shape[1] // 2
         center_y = frame.shape[0] // 2
         cv2.line(frame, (center_x - 10, center_y), (center_x + 10, center_y), (0, 255, 0), 1)
         cv2.line(frame, (center_x, center_y - 10), (center_x, center_y + 10), (0, 255, 0), 1)
-
-        # Handle MQTT commands based on mode
-        if mqtt_connected:
-            if controller_state.auto_mode:
-                if target_acquired:
-                    data = {
-                        'pan_angle': controller_state.pan_angle,
-                        'tilt_angle': controller_state.tilt_angle,
-                        'relay': 'off'  # Shoot when target acquired
-                    }
-                    client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
-            elif controller_state.trigger_pressed:  # Manual mode with trigger pressed
-                data = {
-                    'pan_angle': controller_state.pan_angle,
-                    'tilt_angle': controller_state.tilt_angle,
-                    'relay': 'off'  # Shoot when trigger pressed
-                }
-                client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
 
     except Exception as e:
         print(f"Error in detect_green_object: {e}")
