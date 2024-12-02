@@ -24,7 +24,7 @@ Ever since we saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo"
 
 "Wingman" is a ![CC BY-NC-SA ](https://licensebuttons.net/l/by-nc-sa/3.0/88x31.png) licensed Open Source "GelBlaster" turret for ["general-purpose robots"](https://www.bostondynamics.com/open-letter-opposing-weaponization-general-purpose-robots). "Wingman" is designed with gamification of non-lethal adversarial Gelblaster sparring matches in mind. It makes robot assisted marksmanship a key compnent of playtime, are you ready to fight your robot overlords? No!? Well, you better get to training sooner than later!
 
-[![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Congo](http://img.youtube.com/vi/Ss35wHcN6iQ/0.jpg)](https://www.youtube.com/watch?v=Ss35wHcN6iQ)<br>
+[![liquor pour](http://img.youtube.com/vi/IS2PtmM9mwU/0.jpg)](https://www.youtube.com/watch?v=IS2PtmM9mwU) [![Latest Status Dec 2024](http://img.youtube.com/vi/UjThLahqY9g/0.jpg)](https://youtube.com/shorts/UjThLahqY9g)<br>
 
 ## Introduction
 
