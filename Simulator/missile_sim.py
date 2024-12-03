@@ -606,6 +606,20 @@ def main_loop():
                             buttons['reverse_tilt']['active'] = controller_state.reverse_tilt
                         # Handle other buttons as needed
 
+                        # Add handlers for pan/tilt aggressiveness
+                        elif button_name == 'pan_aggr_minus':
+                            controller_state.pan_aggr = max(1, controller_state.pan_aggr - 1)
+                            print(f"Pan aggressiveness decreased to {controller_state.pan_aggr}")
+                        elif button_name == 'pan_aggr_plus':
+                            controller_state.pan_aggr = min(20, controller_state.pan_aggr + 1)
+                            print(f"Pan aggressiveness increased to {controller_state.pan_aggr}")
+                        elif button_name == 'tilt_aggr_minus':
+                            controller_state.tilt_aggr = max(1, controller_state.tilt_aggr - 1)
+                            print(f"Tilt aggressiveness decreased to {controller_state.tilt_aggr}")
+                        elif button_name == 'tilt_aggr_plus':
+                            controller_state.tilt_aggr = min(20, controller_state.tilt_aggr + 1)
+                            print(f"Tilt aggressiveness increased to {controller_state.tilt_aggr}")
+
             # Ignore all other mouse events
             return
 

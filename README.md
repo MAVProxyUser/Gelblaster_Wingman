@@ -33,6 +33,9 @@ Ever since we saw James Cameron's "Aliens" in 1986, and Frank Marshall's "Congo"
 ## December 2024 - First Outdoor Test
 [![Latest Status Dec 2024](http://img.youtube.com/vi/UjThLahqY9g/0.jpg)](https://youtube.com/shorts/UjThLahqY9g)<br>
 
+## Current Tracking Response
+[![Current Tracking Response](http://img.youtube.com/vi/NoIiMvJtIzc/0.jpg)](https://youtube.com/shorts/NoIiMvJtIzc?si=dIlFipVr6tI9Dh-7)<br>
+
 ## Introduction
 
 [Gelblaster](https://gelblaster.com) XL "Wingman" is a robotic turret, that shoots gel balls aka Gellets(tm) at targets as selected by AI logic. The Gelblaster based "Wingman turret SDK" was inspired by U.S. Army [TARDEC](https://asc.army.mil/web/news-alt-jfm18-wingman-is-first-step-toward-weaponized-robotics/) - Tank-automotive and Armaments Command, [Open Robotics](https://www.openrobotics.org) [ROS-M](https://rosmilitary.org/faq/) military fork of Robot Operation System from GVSC - Combat Capabilities Development Command Ground Vehicle Systems Center, and their ["Wingman Robotic Gunner"](https://apps.dtic.mil/sti/pdfs/AD1069401.pdf) platform. Functionality of this project seeks to mimic concepts found in the [RTK](https://vimeo.com/593277076?) - Robotic Technology Kernel program. 
