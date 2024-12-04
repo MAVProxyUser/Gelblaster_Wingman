@@ -72,7 +72,9 @@ class GameState:
         # Wave count
         self.wave_number = 1  # Start from wave 1
         self.display_mode = "Game"  # Track display mode
-        self.current_target = None
+        self.current_target = None  # Track current target missile
+        self.shot_time = None      # Track when we fired at current target
+        self.expected_intercept_time = None  # Track when we expect the intercept
 
 class ControllerState:
     def __init__(self):
@@ -104,6 +106,10 @@ class ControllerState:
         self.down_pressed = False
 
         self.invert_auto_trigger = False
+
+        # Add target coordinates initialization
+        self.target_x = GAME_SCREEN_WIDTH // 2  # Initialize to center of screen
+        self.target_y = SCREEN_HEIGHT // 2
 
 def on_connect(client, userdata, flags, rc, properties=None):
     global mqtt_connected
@@ -203,19 +209,19 @@ def spawn_incoming_missiles(game_state):
 
     # Clear any existing missiles
     game_state.incoming_missiles = []
-
+    
     # Number of missiles is equal to the difficulty level
     num_missiles = game_state.difficulty
 
     for _ in range(num_missiles):
         start_x = random.randint(0, GAME_SCREEN_WIDTH)
-        target_building = random.choice(intact_buildings)
+        target_building = random.choice(intact_buildings)  # This is safe now since we checked if intact_buildings is empty
         speed = random.uniform(50, 100 + game_state.difficulty * 10)
         missile = {
             'start_x': start_x,
             'start_y': 0,
             'end_x': target_building['x'],
-            'end_y': SCREEN_HEIGHT - 40,  # Adjust this if needed to match your ground level
+            'end_y': SCREEN_HEIGHT - 40,
             'current_x': start_x,
             'current_y': 0,
             'speed': speed
@@ -302,7 +308,7 @@ def main_loop():
     client.on_message = on_message
     client.on_disconnect = on_disconnect
 
-    # Initialize MQTT Client
+    # Initialize MQTT Client with better error handling
     try:
         print(f"Attempting to connect to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
@@ -311,6 +317,8 @@ def main_loop():
     except Exception as e:
         print(f"Error connecting to MQTT broker: {e}")
         mqtt_connected = False
+        # Continue running even without MQTT connection
+        pass
 
     # Set up input devices
     input_devices = find_input_devices()
@@ -356,137 +364,154 @@ def main_loop():
 
     last_time = time.time()
 
-    # Simplified buttons dictionary with essential controls
+    # Initialize buttons with all required keys
     buttons = {
-        'auto': {'rect': (10, 10, CONTROL_CENTER_WIDTH - 10, 40), 'active': controller_state.auto_mode},
-        'manual': {'rect': (10, 50, CONTROL_CENTER_WIDTH - 10, 80), 'active': not controller_state.auto_mode},
-        'accuracy': {'rect': (10, 90, CONTROL_CENTER_WIDTH - 10, 120), 'label': 'Accuracy', 'value': controller_state.accuracy,
-                    'minus': (10, 90, 40, 120), 'plus': (CONTROL_CENTER_WIDTH - 40, 90, CONTROL_CENTER_WIDTH - 10, 120)},
-        'difficulty': {'rect': (10, 130, CONTROL_CENTER_WIDTH - 10, 160), 'label': 'Difficulty', 'value': game_state.difficulty,
-                      'minus': (10, 130, 40, 160), 'plus': (CONTROL_CENTER_WIDTH - 40, 130, CONTROL_CENTER_WIDTH - 10, 160)},
-        'reverse_pan': {'rect': (10, 170, CONTROL_CENTER_WIDTH - 10, 200), 'active': controller_state.reverse_pan},
-        'reverse_tilt': {'rect': (10, 210, CONTROL_CENTER_WIDTH - 10, 240), 'active': controller_state.reverse_tilt},
-        'restart': {'rect': (10, SCREEN_HEIGHT - 80, CONTROL_CENTER_WIDTH - 10, SCREEN_HEIGHT - 50), 'active': False},
-        'exit': {'rect': (10, SCREEN_HEIGHT - 40, CONTROL_CENTER_WIDTH - 10, SCREEN_HEIGHT - 10), 'active': False},
-        'pan_aggr_minus': {'rect': (10, 260, 40, 290)},
-        'pan_aggr_plus': {'rect': (CONTROL_CENTER_WIDTH - 40, 260, CONTROL_CENTER_WIDTH - 10, 290)},
-        'tilt_aggr_minus': {'rect': (10, 310, 40, 340)},
-        'tilt_aggr_plus': {'rect': (CONTROL_CENTER_WIDTH - 40, 310, CONTROL_CENTER_WIDTH - 10, 340)},
-        'display_mode': {'rect': (10, 360, CONTROL_CENTER_WIDTH - 10, 390)},
+        'auto': {
+            'rect': (10, 10, CONTROL_CENTER_WIDTH//2 - 5, 40),
+            'label': 'Auto',
+            'active': controller_state.auto_mode
+        },
+        'manual': {
+            'rect': (CONTROL_CENTER_WIDTH//2 + 5, 10, CONTROL_CENTER_WIDTH - 10, 40),
+            'label': 'Manual',
+            'active': not controller_state.auto_mode
+        },
+        'display_mode': {
+            'rect': (10, 50, CONTROL_CENTER_WIDTH - 10, 80),
+            'label': 'Mode'  # Added label
+        },
+        'accuracy': {
+            'rect': (10, 90, CONTROL_CENTER_WIDTH - 10, 120),
+            'label': 'Accuracy',
+            'value': controller_state.accuracy,
+            'minus': (10, 90, 30, 110),
+            'plus': (CONTROL_CENTER_WIDTH - 30, 90, CONTROL_CENTER_WIDTH - 10, 110)
+        },
+        'difficulty': {
+            'rect': (10, 130, CONTROL_CENTER_WIDTH - 10, 160),
+            'label': 'Difficulty',
+            'value': game_state.difficulty,
+            'minus': (10, 130, 30, 150),
+            'plus': (CONTROL_CENTER_WIDTH - 30, 130, CONTROL_CENTER_WIDTH - 10, 150)
+        },
+        'pan_aggr': {
+            'rect': (10, 170, CONTROL_CENTER_WIDTH - 10, 200),
+            'label': 'Pan Aggr',
+            'value': controller_state.pan_aggr,
+            'minus': (10, 170, 30, 190),
+            'plus': (CONTROL_CENTER_WIDTH - 30, 170, CONTROL_CENTER_WIDTH - 10, 190)
+        },
+        'tilt_aggr': {
+            'rect': (10, 210, CONTROL_CENTER_WIDTH - 10, 240),
+            'label': 'Tilt Aggr',
+            'value': controller_state.tilt_aggr,
+            'minus': (10, 210, 30, 230),
+            'plus': (CONTROL_CENTER_WIDTH - 30, 210, CONTROL_CENTER_WIDTH - 10, 230)
+        },
+        'restart': {
+            'rect': (10, SCREEN_HEIGHT - 80, CONTROL_CENTER_WIDTH - 10, SCREEN_HEIGHT - 50),
+            'label': 'Restart'  # Added label
+        },
+        'exit': {
+            'rect': (10, SCREEN_HEIGHT - 40, CONTROL_CENTER_WIDTH - 10, SCREEN_HEIGHT - 10),
+            'label': 'Exit'  # Added label
+        }
     }
 
     def draw_control_panel(control_center, buttons, controller_state, game_state):
-        """Draw a clean, organized control panel"""
+        """Draw a clean, organized control panel based on display mode"""
         # Clear the panel
         control_center.fill(64)  # Dark gray background
 
-        # Draw mode buttons (Auto/Manual) with labels
-        cv2.rectangle(control_center, 
-                     (buttons['auto']['rect'][0], buttons['auto']['rect'][1]),
-                     (buttons['auto']['rect'][2], buttons['auto']['rect'][3]),
-                     (0, 255, 0) if buttons['auto']['active'] else (0, 100, 0), 
-                     -1)
-        cv2.putText(control_center, "Auto", 
-                   (buttons['auto']['rect'][0] + 10, buttons['auto']['rect'][1] + 20),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
-        cv2.rectangle(control_center, 
-                     (buttons['manual']['rect'][0], buttons['manual']['rect'][1]),
-                     (buttons['manual']['rect'][2], buttons['manual']['rect'][3]),
-                     (0, 255, 0) if buttons['manual']['active'] else (0, 100, 0), 
-                     -1)
-        cv2.putText(control_center, "Manual", 
-                   (buttons['manual']['rect'][0] + 10, buttons['manual']['rect'][1] + 20),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
-        # Draw display mode toggle button
+        # Common controls at top (mode switch)
+        button = buttons['display_mode']
         cv2.rectangle(control_center,
-                     (buttons['display_mode']['rect'][0], buttons['display_mode']['rect'][1]),
-                     (buttons['display_mode']['rect'][2], buttons['display_mode']['rect'][3]),
+                     (button['rect'][0], button['rect'][1]),
+                     (button['rect'][2], button['rect'][3]),
                      (0, 255, 0) if game_state.display_mode == "Live" else (0, 100, 0),
                      -1)
         cv2.putText(control_center, f"Mode: {game_state.display_mode}",
-                   (buttons['display_mode']['rect'][0] + 10, buttons['display_mode']['rect'][1] + 20),
+                   (button['rect'][0] + 10, button['rect'][1] + 20),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
-        # Draw sliders with +/- buttons
-        for control in ['accuracy', 'difficulty']:
-            button = buttons[control]
-            # Draw label
-            cv2.putText(control_center, f"{button['label']}: {button['value']}", 
-                       (10, button['rect'][1] + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            # Draw +/- buttons
-            cv2.rectangle(control_center, 
-                         (button['minus'][0], button['minus'][1]),
-                         (button['minus'][2], button['minus'][3]),
-                         (0, 100, 0), -1)
-            cv2.rectangle(control_center, 
-                         (button['plus'][0], button['plus'][1]),
-                         (button['plus'][2], button['plus'][3]),
-                         (0, 100, 0), -1)
-            cv2.putText(control_center, "-", (button['minus'][0] + 15, button['minus'][1] + 20), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            cv2.putText(control_center, "+", (button['plus'][0] + 15, button['plus'][1] + 20), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-        # Add aggressiveness sliders
-        y_offset = 250  # Starting Y position for aggressiveness controls
-        for control_type in ['Pan', 'Tilt']:
-            # Get the actual value (1-10)
-            current_value = int(controller_state.pan_aggr if control_type == 'Pan' else controller_state.tilt_aggr)
-            
-            # Draw label with integer value
-            cv2.putText(control_center, f"{control_type} Aggr: {current_value}", 
-                       (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            
-            # Draw minus button
-            cv2.rectangle(control_center, 
-                         (10, y_offset + 10),
-                         (40, y_offset + 40),
-                         (0, 100, 0), -1)
-            cv2.putText(control_center, "-", 
-                       (20, y_offset + 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            
-            # Draw plus button
-            cv2.rectangle(control_center, 
-                         (CONTROL_CENTER_WIDTH - 40, y_offset + 10),
-                         (CONTROL_CENTER_WIDTH - 10, y_offset + 40),
-                         (0, 100, 0), -1)
-            cv2.putText(control_center, "+", 
-                       (CONTROL_CENTER_WIDTH - 30, y_offset + 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            
-            y_offset += 50  # Space for next control
-
-        # Draw reverse controls
-        for control in ['reverse_pan', 'reverse_tilt']:
-            button = buttons[control]
-            label = "Reverse Pan" if control == 'reverse_pan' else "Reverse Tilt"
+        # Auto/Manual toggle for both modes
+        for mode in ['auto', 'manual']:
+            button = buttons[mode]
             cv2.rectangle(control_center, 
                          (button['rect'][0], button['rect'][1]),
                          (button['rect'][2], button['rect'][3]),
                          (0, 255, 0) if button['active'] else (0, 100, 0), 
                          -1)
-            cv2.putText(control_center, f"{label}: {'On' if button['active'] else 'Off'}", 
+            cv2.putText(control_center, button['label'], 
                        (button['rect'][0] + 10, button['rect'][1] + 20),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-        # Draw bottom buttons
+        if game_state.display_mode == "Game":
+            # Game Mode Controls
+            # Draw difficulty control
+            button = buttons['difficulty']
+            cv2.putText(control_center, f"Difficulty: {button['value']}", 
+                       (button['rect'][0] + 10, button['rect'][1] + 20),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            # Draw +/- buttons for difficulty
+            for control_button in ['minus', 'plus']:
+                cv2.rectangle(control_center, 
+                             (button[control_button][0], button[control_button][1]),
+                             (button[control_button][2], button[control_button][3]),
+                             (0, 100, 0), -1)
+                cv2.putText(control_center, '-' if control_button == 'minus' else '+',
+                           (button[control_button][0] + 8, button[control_button][1] + 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+            # Draw accuracy control
+            button = buttons['accuracy']
+            cv2.putText(control_center, f"Accuracy: {button['value']}", 
+                       (button['rect'][0] + 10, button['rect'][1] + 20),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            # Draw +/- buttons for accuracy
+            for control_button in ['minus', 'plus']:
+                cv2.rectangle(control_center, 
+                             (button[control_button][0], button[control_button][1]),
+                             (button[control_button][2], button[control_button][3]),
+                             (0, 100, 0), -1)
+                cv2.putText(control_center, '-' if control_button == 'minus' else '+',
+                           (button[control_button][0] + 8, button[control_button][1] + 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+        else:  # Live Mode Controls
+            # Draw pan/tilt aggressiveness controls
+            for control in ['pan_aggr', 'tilt_aggr']:
+                button = buttons[control]
+                cv2.putText(control_center, f"{button['label']}: {button['value']}", 
+                           (button['rect'][0] + 10, button['rect'][1] + 20),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                # Draw +/- buttons
+                for control_button in ['minus', 'plus']:
+                    cv2.rectangle(control_center, 
+                                 (button[control_button][0], button[control_button][1]),
+                                 (button[control_button][2], button[control_button][3]),
+                                 (0, 100, 0), -1)
+                    cv2.putText(control_center, '-' if control_button == 'minus' else '+',
+                               (button[control_button][0] + 8, button[control_button][1] + 15),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+        # Common controls at bottom
+        # Draw restart and exit buttons
         for control in ['restart', 'exit']:
             button = buttons[control]
             cv2.rectangle(control_center, 
                          (button['rect'][0], button['rect'][1]),
                          (button['rect'][2], button['rect'][3]),
                          (0, 100, 0), -1)
-            cv2.putText(control_center, control.capitalize(), 
+            cv2.putText(control_center, button['label'], 
                        (button['rect'][0] + 10, button['rect'][1] + 20),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         # Draw MQTT status at the bottom
         mqtt_status = "Connected" if mqtt_connected else "Disconnected"
         cv2.putText(control_center, f"MQTT: {mqtt_status}", 
-                   (10, SCREEN_HEIGHT - 90), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                   (10, SCREEN_HEIGHT - 90),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
 
     # Update the main loop to use the new control panel
     while running:
@@ -578,11 +603,7 @@ def main_loop():
                 for button_name, button_info in buttons.items():
                     x1, y1, x2, y2 = button_info['rect']
                     if x1 <= x <= x2 and y1 <= y <= y2:
-                        # Handle button actions here
-                        if button_name == 'display_mode':
-                            game_state.display_mode = "Live" if game_state.display_mode == "Game" else "Game"
-                            print(f"Switched to {game_state.display_mode} mode")
-                        elif button_name == 'auto':
+                        if button_name == 'auto':
                             controller_state.auto_mode = True
                             buttons['auto']['active'] = True
                             buttons['manual']['active'] = False
@@ -590,35 +611,45 @@ def main_loop():
                             controller_state.auto_mode = False
                             buttons['auto']['active'] = False
                             buttons['manual']['active'] = True
+                        elif button_name == 'display_mode':
+                            game_state.display_mode = "Live" if game_state.display_mode == "Game" else "Game"
                         elif button_name == 'restart':
-                            print("Game restarted by clicking 'Restart' button")
                             game_state = GameState()
-                            controller_state.accuracy = 100
                             spawn_incoming_missiles(game_state)
                         elif button_name == 'exit':
-                            print("Exit button clicked")
                             running = False
-                        elif button_name == 'reverse_pan':
-                            controller_state.reverse_pan = not controller_state.reverse_pan
-                            buttons['reverse_pan']['active'] = controller_state.reverse_pan
-                        elif button_name == 'reverse_tilt':
-                            controller_state.reverse_tilt = not controller_state.reverse_tilt
-                            buttons['reverse_tilt']['active'] = controller_state.reverse_tilt
-                        # Handle other buttons as needed
-
-                        # Add handlers for pan/tilt aggressiveness
-                        elif button_name == 'pan_aggr_minus':
-                            controller_state.pan_aggr = max(1, controller_state.pan_aggr - 1)
-                            print(f"Pan aggressiveness decreased to {controller_state.pan_aggr}")
-                        elif button_name == 'pan_aggr_plus':
-                            controller_state.pan_aggr = min(20, controller_state.pan_aggr + 1)
-                            print(f"Pan aggressiveness increased to {controller_state.pan_aggr}")
-                        elif button_name == 'tilt_aggr_minus':
-                            controller_state.tilt_aggr = max(1, controller_state.tilt_aggr - 1)
-                            print(f"Tilt aggressiveness decreased to {controller_state.tilt_aggr}")
-                        elif button_name == 'tilt_aggr_plus':
-                            controller_state.tilt_aggr = min(20, controller_state.tilt_aggr + 1)
-                            print(f"Tilt aggressiveness increased to {controller_state.tilt_aggr}")
+                        elif button_name == 'accuracy':
+                            if x <= x1 + 30:  # Minus button
+                                controller_state.accuracy = max(0, controller_state.accuracy - 10)
+                                buttons['accuracy']['value'] = controller_state.accuracy
+                            elif x >= x2 - 30:  # Plus button
+                                controller_state.accuracy = min(100, controller_state.accuracy + 10)
+                                buttons['accuracy']['value'] = controller_state.accuracy
+                        elif button_name == 'difficulty':
+                            if x <= x1 + 30:  # Minus button
+                                game_state.difficulty = max(1, game_state.difficulty - 1)
+                                buttons['difficulty']['value'] = game_state.difficulty
+                            elif x >= x2 - 30:  # Plus button
+                                game_state.difficulty = min(10, game_state.difficulty + 1)
+                                buttons['difficulty']['value'] = game_state.difficulty
+                        elif button_name == 'pan_aggr':
+                            if x <= x1 + 30:  # Minus button
+                                controller_state.pan_aggr = max(1.0, controller_state.pan_aggr - 1.0)
+                                buttons['pan_aggr']['value'] = controller_state.pan_aggr
+                                print(f"Pan aggressiveness decreased to {controller_state.pan_aggr}")
+                            elif x >= x2 - 30:  # Plus button
+                                controller_state.pan_aggr = min(20.0, controller_state.pan_aggr + 1.0)
+                                buttons['pan_aggr']['value'] = controller_state.pan_aggr
+                                print(f"Pan aggressiveness increased to {controller_state.pan_aggr}")
+                        elif button_name == 'tilt_aggr':
+                            if x <= x1 + 30:  # Minus button
+                                controller_state.tilt_aggr = max(1.0, controller_state.tilt_aggr - 1.0)
+                                buttons['tilt_aggr']['value'] = controller_state.tilt_aggr
+                                print(f"Tilt aggressiveness decreased to {controller_state.tilt_aggr}")
+                            elif x >= x2 - 30:  # Plus button
+                                controller_state.tilt_aggr = min(20.0, controller_state.tilt_aggr + 1.0)
+                                buttons['tilt_aggr']['value'] = controller_state.tilt_aggr
+                                print(f"Tilt aggressiveness increased to {controller_state.tilt_aggr}")
 
             # Ignore all other mouse events
             return
@@ -631,49 +662,52 @@ def main_loop():
                 # Remove any player missiles that have reached their target
                 remove_completed_player_missiles(game_state)
 
-                # Number of available shots (accounting for handicap)
-                available_shots = max(1, game_state.difficulty - game_state.handicap) - len(game_state.player_missiles)
-
-                if available_shots > 0 and game_state.incoming_missiles:
+                # Check if there are any intact buildings before proceeding
+                intact_buildings = [b for b in game_state.buildings if b['intact']]
+                if intact_buildings and game_state.incoming_missiles:  
+                    current_time = time.time()
+                    
                     # Sort incoming missiles by proximity to the buildings
                     incoming_sorted = sorted(game_state.incoming_missiles, 
-                                             key=lambda m: min(hypot(m['end_x'] - b['x'], m['end_y'] - (SCREEN_HEIGHT - 40)) 
-                                                               for b in game_state.buildings if b['intact']))
-
-                    # Only target missiles that aren't already being targeted
-                    untargeted_missiles = [m for m in incoming_sorted if not any(pm for pm in game_state.player_missiles 
-                                               if abs(pm['end_x'] - m['current_x']) < 10 and abs(pm['end_y'] - m['current_y']) < 10)]
+                                          key=lambda m: min(hypot(m['end_x'] - b['x'], m['end_y'] - (SCREEN_HEIGHT - 40)) 
+                                                              for b in intact_buildings))
                     
-                    for target_missile in untargeted_missiles[:available_shots]:
-                        # Calculate accurate intercept point
-                        intercept_x, intercept_y = calculate_intercept_point(
-                            target_missile,
-                            GAME_SCREEN_WIDTH // 2,
-                            SCREEN_HEIGHT - 10,
-                            400  # Player missile speed
-                        )
-
-                        # Determine if we need to fire based on accuracy
-                        should_fire = True
-                        if controller_state.accuracy == 100:
-                            # At 100% accuracy, only fire if no other missile is targeting nearby
-                            nearby_targets = [pm for pm in game_state.player_missiles 
-                                              if abs(pm['end_x'] - intercept_x) < 30 and abs(pm['end_y'] - intercept_y) < 30]
-                            should_fire = len(nearby_targets) == 0
-                        else:
-                            # At lower accuracies, we might need multiple shots, but still avoid excessive targeting
+                    # At 100% accuracy, implement precise targeting
+                    if controller_state.accuracy == 100:
+                        # Find the first active incoming missile that needs attention
+                        if game_state.current_target is None and incoming_sorted:
+                            # Pick new target
+                            game_state.current_target = incoming_sorted[0]
+                            # Calculate perfect intercept point
+                            intercept_x, intercept_y = calculate_intercept_point(
+                                game_state.current_target,
+                                GAME_SCREEN_WIDTH // 2,
+                                SCREEN_HEIGHT - 10,
+                                400  # Player missile speed
+                            )
+                            
+                            # Take one perfect shot
+                            player_missile = fire_player_missile(game_state, controller_state, client, intercept_x, intercept_y)
+                            if player_missile:
+                                game_state.current_target = None  # Clear target and move to next
+                    else:
+                        # Existing lower accuracy behavior remains unchanged
+                        untargeted_missiles = [m for m in incoming_sorted if not any(pm for pm in game_state.player_missiles 
+                                                           if abs(pm['end_x'] - m['current_x']) < 10 and abs(pm['end_y'] - m['current_y']) < 10)]
+                        
+                        for target_missile in untargeted_missiles[:available_shots]:
+                            intercept_x, intercept_y = calculate_intercept_point(
+                                target_missile,
+                                GAME_SCREEN_WIDTH // 2,
+                                SCREEN_HEIGHT - 10,
+                                400
+                            )
                             nearby_targets = [pm for pm in game_state.player_missiles 
                                               if abs(pm['end_x'] - intercept_x) < 60 and abs(pm['end_y'] - intercept_y) < 60]
-                            should_fire = len(nearby_targets) < max(1, int((100 - controller_state.accuracy) / 20))
-
-                        if should_fire:
-                            # Update target position for smooth transition
-                            controller_state.target_x = intercept_x
-                            controller_state.target_y = intercept_y
-
-                            # Fire the player missile towards the intercept point
-                            fire_player_missile(game_state, controller_state, client, intercept_x, intercept_y)
-                            available_shots -= 1  # Decrease available shots
+                            if len(nearby_targets) < max(1, int((100 - controller_state.accuracy) / 20)):
+                                controller_state.target_x = intercept_x
+                                controller_state.target_y = intercept_y
+                                fire_player_missile(game_state, controller_state, client, intercept_x, intercept_y)
 
                 # Move the reticle smoothly towards the target
                 dx = controller_state.target_x - controller_state.dot_x
@@ -938,7 +972,7 @@ def calculate_turret_end(building_x, building_y, reticle_x, reticle_y):
     return turret_end_x, turret_end_y
 
 def fire_player_missile(game_state, controller_state, mqtt_client, target_x=None, target_y=None):
-    """Fire a missile from the turret towards the aiming reticle or a specified target, introducing inaccuracy if in auto mode."""
+    """Fire a missile from the turret towards the aiming reticle or a specified target."""
     if len(game_state.player_missiles) < game_state.difficulty + game_state.handicap:
         # Calculate turret position (center building)
         center_building = game_state.buildings[len(game_state.buildings) // 2]
@@ -982,26 +1016,16 @@ def fire_player_missile(game_state, controller_state, mqtt_client, target_x=None
             'end_y': end_y,
             'current_x': start_x,
             'current_y': start_y,
-            'speed': 400
+            'target_id': None,  # Add this field to track which missile we're targeting
+            'speed': 400  # Add this line to set the missile speed
         }
+        
         game_state.player_missiles.append(missile)
-
-        # Send MQTT command to trigger the relay
-        data = {
-            'pan_angle': controller_state.pan_angle,
-            'tilt_angle': controller_state.tilt_angle,
-            'relay': 'on'
-        }
-        mqtt_client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
-
-        # Send command to turn off relay after a short delay
-        time.sleep(0.1)
-        data['relay'] = 'off'
-        mqtt_client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
-
-        # Play laser sound
+        
         if laser_sound:
             laser_sound.play()
+            
+        return missile  # Return the missile object
 
     else:
         print("Maximum number of player missiles in the air. Wait for some to explode.")
