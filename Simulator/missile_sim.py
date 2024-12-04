@@ -111,6 +111,8 @@ class ControllerState:
         self.target_x = GAME_SCREEN_WIDTH // 2  # Initialize to center of screen
         self.target_y = SCREEN_HEIGHT // 2
 
+        self.figure8_enabled = False  # Add this line for the new setting
+
 def on_connect(client, userdata, flags, rc, properties=None):
     global mqtt_connected
     if rc == 0:
@@ -415,7 +417,12 @@ def main_loop():
         'exit': {
             'rect': (10, SCREEN_HEIGHT - 40, CONTROL_CENTER_WIDTH - 10, SCREEN_HEIGHT - 10),
             'label': 'Exit'  # Added label
-        }
+        },
+        'figure8': {
+            'rect': (10, 250, CONTROL_CENTER_WIDTH - 10, 280),
+            'label': 'Figure-8',
+            'active': controller_state.figure8_enabled
+        },
     }
 
     def draw_control_panel(control_center, buttons, controller_state, game_state):
@@ -512,6 +519,18 @@ def main_loop():
         cv2.putText(control_center, f"MQTT: {mqtt_status}", 
                    (10, SCREEN_HEIGHT - 90),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
+        if game_state.display_mode == "Live":  # Only show figure-8 option in Live mode
+            # Draw figure-8 checkbox
+            button = buttons['figure8']
+            cv2.rectangle(control_center, 
+                         (button['rect'][0], button['rect'][1]),
+                         (button['rect'][2], button['rect'][3]),
+                         (0, 255, 0) if button['active'] else (0, 100, 0), 
+                         -1)
+            cv2.putText(control_center, button['label'], 
+                       (button['rect'][0] + 10, button['rect'][1] + 20),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
     # Update the main loop to use the new control panel
     while running:
@@ -650,6 +669,9 @@ def main_loop():
                                 controller_state.tilt_aggr = min(20.0, controller_state.tilt_aggr + 1.0)
                                 buttons['tilt_aggr']['value'] = controller_state.tilt_aggr
                                 print(f"Tilt aggressiveness increased to {controller_state.tilt_aggr}")
+                        elif button_name == 'figure8':
+                            controller_state.figure8_enabled = not controller_state.figure8_enabled
+                            buttons['figure8']['active'] = controller_state.figure8_enabled
 
             # Ignore all other mouse events
             return
@@ -1213,6 +1235,18 @@ def create_game_display(game_state, controller_state, background):
     cv2.circle(display_image, (int(controller_state.dot_x), int(controller_state.dot_y)), 5, (0, 0, 255), -1)
     return display_image
 
+def calculate_figure8_offset(time_val, amplitude=2.0):
+    """Calculate figure-8 pattern offsets based on time."""
+    # Lissajous curve parameters for figure-8
+    freq_x = 2.0  # Horizontal frequency
+    freq_y = 1.0  # Vertical frequency - half of horizontal for figure-8
+    
+    # Calculate offsets using parametric equations
+    x_offset = amplitude * math.sin(freq_x * time_val)
+    y_offset = amplitude * math.sin(freq_y * time_val * 2)
+    
+    return x_offset, y_offset
+
 def detect_green_object(frame, controller_state):
     # Initialize all variables at the start
     target_x = None
@@ -1252,14 +1286,27 @@ def detect_green_object(frame, controller_state):
             aim_y = frame.shape[0] // 2
             if x <= aim_x <= x + w and y <= aim_y <= y + h:
                 # When crosshair is inside box - turn red AND cycle trigger
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)  # BGR format: Red
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
                 target_acquired = True
                 
-                # Handle MQTT - cycle trigger rapidly when on target
+                # Handle MQTT when target acquired
                 if mqtt_connected and controller_state.auto_mode:
+                    current_time = time.time()
+                    
+                    # Base angles (without figure-8)
+                    adjusted_pan = controller_state.pan_angle
+                    adjusted_tilt = controller_state.tilt_angle
+                    
+                    # Add figure-8 motion only if enabled
+                    if controller_state.figure8_enabled:
+                        x_offset, y_offset = calculate_figure8_offset(current_time)
+                        adjusted_pan += x_offset
+                        adjusted_tilt += y_offset
+                    
+                    # Always cycle the trigger when on target
                     data = {
-                        'pan_angle': controller_state.pan_angle,
-                        'tilt_angle': controller_state.tilt_angle,
+                        'pan_angle': adjusted_pan,
+                        'tilt_angle': adjusted_tilt,
                         'relay': 'off' if time.time() % 0.2 < 0.1 else 'on'  # Toggle every 0.1 seconds
                     }
                     client.publish(MQTT_TOPIC_CONTROL, json.dumps(data))
