@@ -15,6 +15,7 @@ import os
 import subprocess
 import logging
 import depthai as dai
+import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -58,96 +59,94 @@ if current_platform == 'Linux':
     GPIO.output(RELAY_PIN, GPIO.HIGH)  # Start with relay deactivated
     print(f"Initialized relay pin {RELAY_PIN} to HIGH (deactivated)", flush=True)
 
-# MQTT Topics
-MQTT_TOPIC_CONTROL = "dpad/commands"
+# MQTT Topics - Update these to match the client
+MQTT_TOPIC_CONTROL = "dpad/commands"   # Changed to match client
 MQTT_TOPIC_CAMERA = "camera/feed"
 MQTT_TOPIC_BBOX = "camera/bbox"
 MQTT_TOPIC_SERVO_STATUS = "servo/status"
 MQTT_TOPIC_PLATFORM = "server/platform"
 MQTT_TOPIC_PLATFORM_REQUEST = "server/platform_request"
-MQTT_TOPIC_DEPTH = "camera/depth"  # Define the topic for depth data
-MQTT_TOPIC_RELAY = "relay/command"  # Topic for relay control
+MQTT_TOPIC_DEPTH = "camera/depth"
+MQTT_TOPIC_RELAY = "relay/command"
+MQTT_TOPIC_COMMAND = "dpad/commands"   # Changed to match client
 RELAY_ACTIVATE = 'off'    # Relay is "normally closed" - sending 'off' activates it
 RELAY_DEACTIVATE = 'on'   # Sending 'on' deactivates the normally closed relay
 
 # Add with other MQTT topics at the top
-MQTT_TOPIC_COMMAND = "dpad/commands"  # Topic for keyboard commands
 
-# Servo Configuration
-INITIAL_TILT_ANGLE = -240
-TILT_ANGLE_MAX = -130
-TILT_ANGLE_MIN = -340
-PAN_ANGLE_MIN = -1200
-PAN_ANGLE_MAX = 1200
+# First define the constants
+POSITION_CENTER = 2048     # Center position
+HOME_PAN_ANGLE = 0.0      # Default home position for pan (center)
+HOME_TILT_ANGLE = 0.0     # Default home position for tilt (center)
+
+# Color detection constants
+LOWER_GREEN = np.array([35, 50, 50])    # Lower bound of green in HSV
+UPPER_GREEN = np.array([85, 255, 255])  # Upper bound of green in HSV
+MIN_CONTOUR_AREA = 15                   # Minimum contour area to track
 
 # Dynamixel Configuration
-ADDR_TORQUE_ENABLE = 64
-ADDR_GOAL_POSITION = 116
-ADDR_PRESENT_POSITION = 132
-LEN_GOAL_POSITION = 4
-DXL1_ID = 1  # Pan servo ID
-DXL2_ID = 2  # Tilt servo ID
-BAUDRATE = 1000000
-PROTOCOL_VERSION = 2.0
-TORQUE_ENABLE = 1
-TORQUE_DISABLE = 0
-DXL_MOVING_STATUS_THRESHOLD = 40
-ADDR_GOAL_TORQUE = 102
-LEN_GOAL_TORQUE = 2
-DXL_GOAL_TORQUE = 500
+ADDR_TORQUE_ENABLE = 64               # Control table address for torque enable
+ADDR_OPERATING_MODE = 11              # Control table address for operating mode
+ADDR_GOAL_POSITION = 116             # Control table address for goal position
+ADDR_PRESENT_POSITION = 132          # Control table address for present position
+ADDR_GOAL_CURRENT = 102              # Control table address for goal current (torque)
+ADDR_RESET = 117                     # Control table address for factory reset
+LEN_GOAL_POSITION = 4                # Data length for goal position
+DXL1_ID = 1                          # Pan servo ID
+DXL2_ID = 2                          # Tilt servo ID
+BAUDRATE = 1000000                   # Default baudrate
+PROTOCOL_VERSION = 2.0               # Protocol version
+TORQUE_ENABLE = 1                    # Value for enabling torque
+TORQUE_DISABLE = 0                   # Value for disabling torque
+DXL_MOVING_STATUS_THRESHOLD = 20     # Threshold for detecting movement
+DXL_GOAL_CURRENT = 500              # Torque limit (0-1193)
 
 # Operating mode settings
 OPERATING_MODE = 4         # Extended position control mode (multi-turn)
 MAX_POSITION_VALUE = 4095  # Maximum position value
 MIN_POSITION_VALUE = 0     # Minimum position value
-POSITION_CENTER = 2048     # Center position
+COMM_SUCCESS = 0          # Communication success result value
 
-# Thread-safe variables
-latest_command = {'pan_angle': 0.0, 'tilt_angle': 0.0}  # Default values
+# Then define the global variables that use these constants
 command_lock = threading.Lock()
-
-# Global TOF variable
-tof = 0.0  # Default TOF value set to 0
-
-# Global variable for the latest frame
-latest_frame = None
 frame_lock = threading.Lock()
+detection_lock = threading.Lock()
 
-# Remove the fixed HOME position constants and make them global variables
-HOME_PAN_ANGLE = None
-HOME_TILT_ANGLE = None
-
-# Initialize current state variables
+# Rest of the global variables
+latest_command = {
+    'auto_mode': False,
+    'pan_angle': HOME_PAN_ANGLE,
+    'tilt_angle': HOME_TILT_ANGLE,
+    'command_received': False
+}
+latest_frame = None
+latest_detection = None
+running = True
+client_connected = False
+home_pan_position = None
+home_tilt_position = None
+tof = 0.0
+sensitivity = 1.0
+last_relay_change = 0
+pan_servo = None
+tilt_servo = None
+cap = None
+q_rgb = None
+device = None
 current_pan_angle = HOME_PAN_ANGLE
 current_tilt_angle = HOME_TILT_ANGLE
-current_speed = 0  # or whatever the default speed should be
-current_auto_mode = False  # or whatever the default auto mode should be
+current_speed = 0
+current_auto_mode = False
 
-# Add a global variable to store sensitivity
-sensitivity = 1.0
-
-# Add these constants at the top of the file with other constants
-# HSV color range for green detection
-LOWER_GREEN = np.array([35, 50, 50])   # Lower bound of green in HSV
-UPPER_GREEN = np.array([85, 255, 255]) # Upper bound of green in HSV
-MIN_CONTOUR_AREA = 15  # Lower the minimum area threshold
-
-# Add this with other global variables near the top of the file
-running = True
+# Then the rest of the constants
+PAN_ANGLE_MIN = -90.0   # 90 degrees left of center
+PAN_ANGLE_MAX = 90.0    # 90 degrees right of center
+TILT_ANGLE_MIN = -90.0  # 90 degrees down from center
+TILT_ANGLE_MAX = 90.0   # 90 degrees up from center
 
 # Near the top of the file with other constants
 PAN_ANGLE_PER_PIXEL = 0.1  # Degrees per pixel for pan
 TILT_ANGLE_PER_PIXEL = 0.1  # Degrees per pixel for tilt
-
-# Near the top of the file with other constants
-PAN_ANGLE_MIN = -90.0  # Minimum pan angle in degrees
-PAN_ANGLE_MAX = 90.0   # Maximum pan angle in degrees
-TILT_ANGLE_MIN = -270.0  # Minimum tilt angle in degrees
-TILT_ANGLE_MAX = -130.0  # Maximum tilt angle in degrees
-
-# Global servo objects
-pan_servo = None
-tilt_servo = None
 
 # Servo Control Parameters
 SMOOTHING_FACTOR = 0.3  # Smoothing factor (0.0-1.0)
@@ -156,10 +155,337 @@ UPDATE_RATE_HZ = 50  # Control loop update rate
 MAX_SPEED = MAX_SPEED_DEG_PER_SEC / UPDATE_RATE_HZ  # Max speed per update
 MIN_CORRECTION = 0.1  # Minimum correction to apply (degrees)
 
-# Add this before the main execution block
+# Add these with the other Dynamixel Configuration constants
+ADDR_POSITION_P_GAIN = 84    # Control table address for Position P Gain
+ADDR_POSITION_I_GAIN = 82    # Control table address for Position I Gain  
+ADDR_POSITION_D_GAIN = 80    # Control table address for Position D Gain
+
+# Add these constants at the top with other constants
+PAN_MIN_ANGLE = -90.0  # Minimum pan angle in degrees 
+PAN_MAX_ANGLE = 90.0   # Maximum pan angle in degrees
+TILT_MIN_ANGLE = -45.0 # Minimum tilt angle in degrees
+TILT_MAX_ANGLE = 45.0  # Maximum tilt angle in degrees
+
+# Add these variables at the top with other globals
+initial_pan_position = None
+initial_tilt_position = None
+
+# Servo position limits
+PAN_MIN_POSITION = 0       # Changed from 1024 to 0 for maximum left movement
+PAN_MAX_POSITION = 4095    # Changed from 3072 to 4095 for maximum right movement
+TILT_MIN_POSITION = 200    # Keep current tilt limits
+TILT_MAX_POSITION = 3800   # Keep current tilt limits
+
+# Move this function up, before servo_update_thread
+def angle_to_servo_position(servo_id, angle):
+    """Convert angle in degrees to servo position"""
+    if servo_id == DXL1_ID:  # Pan servo
+        # Limit pan angle
+        angle = min(max(angle, PAN_MIN_ANGLE), PAN_MAX_ANGLE)
+        return int(2048 + (angle * 2048 / 180.0))
+    else:  # Tilt servo
+        # Limit tilt angle
+        angle = min(max(angle, TILT_MIN_ANGLE), TILT_MAX_ANGLE)
+        return int(2048 + (angle * 2048 / 90.0))
+
+def find_dynamixel_port():
+    """Find the Dynamixel U2D2 controller port."""
+    try:
+        ports = list(serial.tools.list_ports.comports())
+        print(f"Available ports: {[port.device for port in ports]}", flush=True)
+        
+        # First try to find U2D2 by USB ID
+        for port in ports:
+            if "FT232R" in port.description or "U2D2" in port.description:
+                print(f"Found potential U2D2 device at {port.device}", flush=True)
+                port_handler = PortHandler(port.device)
+                if port_handler.openPort():
+                    print(f"Opened port {port.device}", flush=True)
+                    if port_handler.setBaudRate(BAUDRATE):
+                        print(f"Set baud rate to {BAUDRATE}", flush=True)
+                        packet_handler = PacketHandler(PROTOCOL_VERSION)
+                        for dxl_id in [DXL1_ID, DXL2_ID]:
+                            dxl_model_number, dxl_comm_result, dxl_error = packet_handler.ping(port_handler, dxl_id)
+                            if dxl_comm_result == COMM_SUCCESS:
+                                print(f"Successfully pinged Dynamixel ID {dxl_id} on port {port.device}", flush=True)
+                                return port_handler, packet_handler
+                    port_handler.closePort()
+
+        # If U2D2 not found by description, try ttyUSB devices
+        for port in ports:
+            if "ttyUSB" in port.device:
+                print(f"Trying USB device at {port.device}", flush=True)
+                port_handler = PortHandler(port.device)
+                if port_handler.openPort():
+                    if port_handler.setBaudRate(BAUDRATE):
+                        packet_handler = PacketHandler(PROTOCOL_VERSION)
+                        for dxl_id in [DXL1_ID, DXL2_ID]:
+                            dxl_model_number, dxl_comm_result, dxl_error = packet_handler.ping(port_handler, dxl_id)
+                            if dxl_comm_result == COMM_SUCCESS:
+                                return port_handler, packet_handler
+                    port_handler.closePort()
+
+        print("Could not find U2D2 device", flush=True)
+        return None, None
+
+    except Exception as e:
+        print(f"Error finding Dynamixel port: {e}", flush=True)
+        traceback.print_exc()
+        return None, None
+
+def initialize_servos(portHandler, packetHandler):
+    """Initialize servos and store their initial positions"""
+    global initial_pan_position, initial_tilt_position
+    
+    try:
+        # Read control table items to debug servo configuration
+        def read_control_table(dxl_id, address, size=1):
+            if size == 1:
+                result, comm_result, error = packetHandler.read1ByteTxRx(portHandler, dxl_id, address)
+            elif size == 2:
+                result, comm_result, error = packetHandler.read2ByteTxRx(portHandler, dxl_id, address)
+            elif size == 4:
+                result, comm_result, error = packetHandler.read4ByteTxRx(portHandler, dxl_id, address)
+            if comm_result != COMM_SUCCESS or error != 0:
+                logging.error(f"Failed to read address {address} from servo {dxl_id}:")
+                if comm_result != COMM_SUCCESS:
+                    logging.error(f"Comm Error: {packetHandler.getTxRxResult(comm_result)}")
+                if error != 0:
+                    logging.error(f"Packet Error: {packetHandler.getRxPacketError(error)}")
+                return None
+            return result
+
+        # Debug servo 2 (tilt) configuration
+        logging.info("Reading tilt servo configuration:")
+        operating_mode = read_control_table(DXL2_ID, ADDR_OPERATING_MODE)
+        logging.info(f"Operating mode: {operating_mode}")
+        
+        # Try to read position limits if they exist
+        min_pos = read_control_table(DXL2_ID, 52, size=4)  # Min position limit
+        max_pos = read_control_table(DXL2_ID, 48, size=4)  # Max position limit
+        logging.info(f"Position limits from servo: min={min_pos}, max={max_pos}")
+        
+        # Initialize pan servo (DXL1_ID)
+        logging.info("Initializing servo 1")
+        
+        # Disable torque to allow configuration
+        packetHandler.write1ByteTxRx(portHandler, DXL1_ID, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
+        time.sleep(0.1)
+        
+        # Set operating mode to extended position control (multi-turn)
+        packetHandler.write1ByteTxRx(portHandler, DXL1_ID, ADDR_OPERATING_MODE, 4)
+        time.sleep(0.1)
+        
+        # Set torque limit
+        packetHandler.write2ByteTxRx(portHandler, DXL1_ID, ADDR_GOAL_CURRENT, DXL_GOAL_CURRENT)
+        time.sleep(0.1)
+        
+        # Enable torque
+        packetHandler.write1ByteTxRx(portHandler, DXL1_ID, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
+        logging.info("Successfully initialized servo 1")
+
+        # Initialize tilt servo (DXL2_ID)
+        logging.info("Initializing servo 2")
+        
+        # Disable torque to allow configuration
+        packetHandler.write1ByteTxRx(portHandler, DXL2_ID, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
+        time.sleep(0.1)
+        
+        # Set operating mode to extended position control (multi-turn)
+        packetHandler.write1ByteTxRx(portHandler, DXL2_ID, ADDR_OPERATING_MODE, 4)
+        time.sleep(0.1)
+        
+        # Try to read current position before setting limits
+        current_pos = read_control_table(DXL2_ID, ADDR_PRESENT_POSITION, size=4)
+        logging.info(f"Current position before configuration: {current_pos}")
+        
+        # Set torque limit
+        packetHandler.write2ByteTxRx(portHandler, DXL2_ID, ADDR_GOAL_CURRENT, DXL_GOAL_CURRENT)
+        time.sleep(0.1)
+        
+        # Enable torque
+        packetHandler.write1ByteTxRx(portHandler, DXL2_ID, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
+        logging.info("Successfully initialized servo 2")
+
+        # Read initial positions
+        dxl_present_position1, dxl_comm_result1, dxl_error1 = packetHandler.read4ByteTxRx(
+            portHandler, DXL1_ID, ADDR_PRESENT_POSITION)
+        dxl_present_position2, dxl_comm_result2, dxl_error2 = packetHandler.read4ByteTxRx(
+            portHandler, DXL2_ID, ADDR_PRESENT_POSITION)
+        
+        if dxl_comm_result1 == COMM_SUCCESS and dxl_comm_result2 == COMM_SUCCESS:
+            initial_pan_position = dxl_present_position1
+            initial_tilt_position = dxl_present_position2
+            
+            logging.info(f"Initialized servos at positions - Pan: {initial_pan_position}, Tilt: {initial_tilt_position}")
+            return True
+            
+        return False
+
+    except Exception as e:
+        logging.error(f"Error in initialize_servos: {e}")
+        return False
+
+def initialize_servo(dxl_id):
+    """Initialize a servo with proper settings."""
+    try:
+        # 1. Disable torque to allow setting operating mode
+        dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(
+            portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
+        if dxl_comm_result != COMM_SUCCESS:
+            logging.error(f"Failed to disable torque on ID {dxl_id}")
+            return False
+
+        # 2. Set operating mode (Extended Position for pan, Position for tilt)
+        mode = OPERATING_MODE if dxl_id == DXL1_ID else 3  # 4 for Extended Position, 3 for Position
+        dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(
+            portHandler, dxl_id, ADDR_OPERATING_MODE, mode)
+        if dxl_comm_result != COMM_SUCCESS:
+            logging.error(f"Failed to set operating mode on ID {dxl_id}")
+            return False
+
+        # 3. Set goal current (torque limit)
+        dxl_comm_result, dxl_error = packetHandler.write2ByteTxRx(
+            portHandler, dxl_id, ADDR_GOAL_CURRENT, DXL_GOAL_CURRENT)
+        if dxl_comm_result != COMM_SUCCESS:
+            logging.error(f"Failed to set goal current on ID {dxl_id}")
+            return False
+
+        # 4. Re-enable torque
+        dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(
+            portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
+        if dxl_comm_result != COMM_SUCCESS:
+            logging.error(f"Failed to enable torque on ID {dxl_id}")
+            return False
+
+        logging.info(f"Successfully initialized servo ID {dxl_id}")
+        return True
+
+    except Exception as e:
+        logging.error(f"Error initializing servo ID {dxl_id}: {e}")
+        return False
+
+def read_servo_position(dxl_id, retries=3):
+    """Read the current position of a servo with retries"""
+    for attempt in range(retries):
+        try:
+            # Read present position
+            dxl_present_position, dxl_comm_result, dxl_error = packetHandler.read4ByteTxRx(
+                portHandler, dxl_id, ADDR_PRESENT_POSITION)
+            
+            if dxl_comm_result == COMM_SUCCESS and dxl_error == 0:
+                logging.debug(f"Successfully read position for servo {dxl_id}: {dxl_present_position}")
+                return dxl_present_position
+            else:
+                logging.warning(f"Failed to read servo {dxl_id} position on attempt {attempt + 1}:")
+                logging.warning(f"Comm result: {packetHandler.getTxRxResult(dxl_comm_result)}")
+                logging.warning(f"Error: {packetHandler.getRxPacketError(dxl_error)}")
+                
+        except Exception as e:
+            logging.error(f"Error reading servo {dxl_id} position on attempt {attempt + 1}: {e}")
+            
+        # Small delay before retry
+        time.sleep(0.1)
+    
+    logging.error(f"Failed to read servo {dxl_id} position after {retries} attempts")
+    return None
+
+def servo_position_to_angle(servo_id, position):
+    """Convert servo position to angle in degrees"""
+    if servo_id == DXL1_ID:  # Pan servo
+        # Pan servo: 2048 is center (0°), 1024 is -90°, 3072 is +90°
+        return (position - 2048) * (180.0 / 2048)
+    else:  # Tilt servo
+        # Tilt servo: 2048 is 0°, range is -45° to +45°
+        return (position - 2048) * (90.0 / 2048)
+
+# Add at the top with other globals
+last_relay_change = 0
+RELAY_DEBOUNCE_TIME = 0.1  # 100ms debounce
+
+def on_connect(client, userdata, flags, rc):
+    """Callback when client connects to MQTT broker"""
+    global client_connected
+    logging.info(f"Connected with result code {rc}")
+    
+    if rc == 0:  # Only set connected if connection was successful
+        # Subscribe to all required topics
+        client.subscribe([
+            (MQTT_TOPIC_CONTROL, 0),
+            (MQTT_TOPIC_COMMAND, 0),
+            (MQTT_TOPIC_RELAY, 0),
+            ("server/sensitivity", 0)
+        ])
+        logging.info("Subscribed to control topics")
+        
+        # Initialize with auto mode off and no commands received
+        global latest_command
+        latest_command = {
+            'auto_mode': False,
+            'pan_angle': HOME_PAN_ANGLE,
+            'tilt_angle': HOME_TILT_ANGLE,
+            'command_received': False
+        }
+        
+        # Set client_connected flag
+        client_connected = True
+        logging.info("Client connected and initialized")
+    else:
+        logging.error(f"Failed to connect with result code {rc}")
+        client_connected = False
+
+def on_command(client, userdata, message):
+    try:
+        payload = json.loads(message.payload)
+        logging.debug(f"Received message on topic {message.topic}")
+        logging.debug(f"Message payload: {message.payload}")
+        logging.debug(f"Processing command: {payload}")
+
+        with command_lock:
+            # Handle keyboard commands
+            if 'key' in payload:
+                key = payload['key']
+                if key == 'space':
+                    trigger_relay()
+                elif key in ['left', 'right', 'up', 'down', 'a', 'd', 'w', 's']:
+                    # Convert keyboard input to angle changes
+                    if key in ['left', 'a']:
+                        latest_command['pan_angle'] = min(latest_command.get('pan_angle', 0) + 5, PAN_ANGLE_MAX)
+                    elif key in ['right', 'd']:
+                        latest_command['pan_angle'] = max(latest_command.get('pan_angle', 0) - 5, PAN_ANGLE_MIN)
+                    elif key in ['up', 'w']:
+                        latest_command['tilt_angle'] = min(latest_command.get('tilt_angle', 0) + 5, TILT_ANGLE_MAX)
+                    elif key in ['down', 's']:
+                        latest_command['tilt_angle'] = max(latest_command.get('tilt_angle', 0) - 5, TILT_ANGLE_MIN)
+            # Handle joystick/other commands
+            else:
+                if 'pan_delta' in payload:
+                    latest_command['pan_angle'] += payload['pan_delta']
+                if 'tilt_delta' in payload:
+                    latest_command['tilt_angle'] += payload['tilt_delta']
+                if 'auto_mode' in payload:
+                    latest_command['auto_mode'] = payload['auto_mode']
+            
+            # Set command received flag
+            latest_command['command_received'] = True
+
+        # Debug the final command state
+        logging.debug(f"Current command state: {latest_command}")
+
+    except Exception as e:
+        logging.error(f"Error processing command: {e}")
+        logging.error(traceback.format_exc())
+
+def on_disconnect(client, userdata, rc):
+    """Callback when client disconnects from MQTT broker"""
+    global client_connected
+    client_connected = False
+    print(f"Client disconnected with result code {rc}", flush=True)
+
+# Move the initialize_camera() function before the main execution block
 def initialize_camera():
     """Initialize the camera based on platform."""
-    global cap, q_rgb, device  # Add device to global
+    global cap, q_rgb, device
     
     if current_platform == 'Darwin':
         cap = cv2.VideoCapture(0)
@@ -178,17 +504,16 @@ def initialize_camera():
                 xoutRgb.setStreamName("rgb")
 
                 # Properties
-                camRgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)  # Use CAM_A instead of RGB
+                camRgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
                 camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
                 camRgb.setPreviewSize(640, 480)
                 camRgb.setInterleaved(False)
                 camRgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
-                camRgb.setFps(30)  # Set FPS
+                camRgb.setFps(30)
                 
-                # Enable auto focus and exposure with correct enum values
+                # Camera controls
                 camRgb.initialControl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.AUTO)
                 camRgb.initialControl.setAutoExposureEnable()
-                # Use AUTO for white balance instead of CONTINUOUS
                 camRgb.initialControl.setAutoWhiteBalanceMode(dai.CameraControl.AutoWhiteBalanceMode.AUTO)
 
                 # Linking
@@ -196,7 +521,6 @@ def initialize_camera():
 
                 # Connect to device and start pipeline
                 try:
-                    # First try to find an available device
                     found_devices = dai.Device.getAllAvailableDevices()
                     if len(found_devices) == 0:
                         print("No devices found!")
@@ -205,11 +529,9 @@ def initialize_camera():
                     for device_info in found_devices:
                         print(f"Found device: {device_info.getMxId()} {device_info.state}")
                     
-                    # Connect to first available device
                     device = dai.Device(pipeline)
                     print(f"Connected to {device.getMxId()}")
                     
-                    # Get output queue with latest-only mode
                     q_rgb = device.getOutputQueue(name="rgb", maxSize=1, blocking=False)
                     
                     print("Camera initialized successfully")
@@ -233,12 +555,14 @@ def initialize_camera():
             logging.error(f"Error initializing camera: {e}")
             return False
 
+# Move get_local_ip() before the main execution block, right after the global variables
+
 def get_local_ip():
+    """Get local IP address for MQTT broker."""
     if current_platform == 'Darwin':
         return '10.42.0.1'
     
     try:
-        # Rest of the function for Linux...
         interfaces = netifaces.interfaces()
         for interface in interfaces:
             if interface.startswith('wlan') or interface.startswith('eth'):
@@ -253,14 +577,67 @@ def get_local_ip():
         print(f"Error getting IP: {e}", flush=True)
         return '10.42.0.1'  # Fallback to default IP
 
-def on_sensitivity_update(client, userdata, message):
-    global sensitivity
+# Move initialize_home_position() before the main execution block
+def initialize_home_position():
+    """Initialize home position based on current servo positions at boot"""
+    global HOME_PAN_ANGLE, HOME_TILT_ANGLE, home_pan_position, home_tilt_position, latest_command
+    
     try:
-        payload = json.loads(message.payload)
-        sensitivity = payload.get('sensitivity', 1.0)
-        print(f"Updated sensitivity to: {sensitivity}", flush=True)
+        if current_platform == 'Linux':
+            # Use the initial positions we already read
+            home_pan_position = initial_pan_position
+            home_tilt_position = initial_tilt_position
+            
+            # Set logical angles to 0,0 (this is our reference point)
+            HOME_PAN_ANGLE = 0.0
+            HOME_TILT_ANGLE = 0.0
+            
+            # Initialize latest_command with home positions
+            with command_lock:
+                latest_command = {
+                    'pan_angle': HOME_PAN_ANGLE,
+                    'tilt_angle': HOME_TILT_ANGLE,
+                    'auto_mode': False
+                }
+                
+                # Also initialize current angles
+                global current_pan_angle, current_tilt_angle
+                current_pan_angle = HOME_PAN_ANGLE
+                current_tilt_angle = HOME_TILT_ANGLE
+            
+            logging.info(f"Initialized logical home position to: pan={HOME_PAN_ANGLE}, tilt={HOME_TILT_ANGLE}")
+            logging.info(f"Physical home positions - Pan: {home_pan_position}, Tilt: {home_tilt_position}")
+            return True
+            
+        else:
+            # For non-Linux platforms, use center position
+            home_pan_position = POSITION_CENTER
+            home_tilt_position = POSITION_CENTER
+            return True
+            
     except Exception as e:
-        print(f"Error processing sensitivity update: {e}", flush=True)
+        logging.error(f"Error initializing home position: {e}")
+        return False
+
+# Move these thread functions before the main execution block
+
+def trigger_relay():
+    """Trigger the relay with debounce protection"""
+    global last_relay_change
+    
+    if current_platform != 'Linux':
+        return
+        
+    current_time = time.time()
+    if current_time - last_relay_change > RELAY_DEBOUNCE_TIME:
+        try:
+            GPIO.output(RELAY_PIN, GPIO.LOW)  # Activate relay
+            time.sleep(0.1)  # Brief delay
+            GPIO.output(RELAY_PIN, GPIO.HIGH)  # Deactivate relay
+            last_relay_change = current_time
+            logging.debug("Relay triggered")
+        except Exception as e:
+            logging.error(f"Error triggering relay: {e}")
 
 def detect_green_objects(frame):
     """Detect green objects in the frame."""
@@ -269,297 +646,70 @@ def detect_green_objects(frame):
     frame_center_x = width / 2
     frame_center_y = height / 2
     
-    # Convert to HSV and create mask
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    logging.debug("Converted frame to HSV")
-
-    # Create mask for green color using the constants
-    lower_green = np.array([40, 40, 40])
-    upper_green = np.array([80, 255, 255])
-    mask = cv2.inRange(hsv, lower_green, upper_green)
-    logging.debug("Created mask for green color")
-
-    # Apply morphological operations
-    kernel = np.ones((5,5), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    logging.debug("Applied morphological operations")
-
-    # Find contours
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    logging.debug(f"Found {len(contours)} contours")
-
-    # Filter contours by area
-    valid_contours = []
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        logging.debug(f"Contour area: {area}")
-        if area >= MIN_CONTOUR_AREA:
-            valid_contours.append(contour)
-
-    logging.debug(f"Filtered to {len(valid_contours)} valid contours")
-
-    # Only process the largest contour if we found one
-    if len(valid_contours) > 0:
-        largest_contour = max(valid_contours, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(largest_contour)
-        logging.debug(f"Largest contour at x={x}, y={y}, width={w}, height={h}")
+    try:
+        # Convert to HSV and create mask
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
-        # Calculate center of frame and target
-        target_x = x + w/2
-        target_y = y + h/2
+        # Create mask for green color
+        mask = cv2.inRange(hsv, LOWER_GREEN, UPPER_GREEN)
         
-        # Check if crosshair is inside bounding box
-        crosshair_inside = (x <= frame_center_x <= x + w and y <= frame_center_y <= y + h)
-        crosshair_color = (0, 0, 255) if crosshair_inside else (0, 255, 0)  # Red if inside, green if outside
+        # Apply morphological operations
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         
-        # Draw crosshair with appropriate color
-        cv2.line(frame, (int(frame_center_x - 10), int(frame_center_y)), 
-                (int(frame_center_x + 10), int(frame_center_y)), crosshair_color, 2)
-        cv2.line(frame, (int(frame_center_x), int(frame_center_y - 10)), 
-                (int(frame_center_x), int(frame_center_y + 10)), crosshair_color, 2)
+        # Find contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Debug contour info
+        logging.debug(f"Found {len(contours)} contours")
         
-        # Send relay command directly if in auto mode
-        with command_lock:
-            if latest_command.get('auto_mode', False):
-                # Send 'off' to activate relay when crosshair is inside box
-                client.publish(MQTT_TOPIC_RELAY, RELAY_ACTIVATE if crosshair_inside else RELAY_DEACTIVATE)
+        # Filter contours by area
+        valid_contours = [c for c in contours if cv2.contourArea(c) >= MIN_CONTOUR_AREA]
+        logging.debug(f"Found {len(valid_contours)} valid contours")
         
-        # Calculate angle corrections
-        pan_correction = (target_x - frame_center_x) * PAN_ANGLE_PER_PIXEL
-        tilt_correction = (target_y - frame_center_y) * TILT_ANGLE_PER_PIXEL
+        # Only process the largest contour if we found one
+        if valid_contours:
+            largest_contour = max(valid_contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            
+            # Calculate normalized target coordinates (-1 to 1)
+            target_x = ((x + w/2) - frame_center_x) / (width/2)
+            target_y = ((y + h/2) - frame_center_y) / (height/2)
+            
+            # Draw bounding box
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            
+            # Check if crosshair (center of frame) is inside bounding box
+            crosshair_in_box = (x < frame_center_x < x + w) and (y < frame_center_y < y + h)
+            
+            # Draw crosshair in red if inside box, green if outside
+            crosshair_color = (0, 0, 255) if crosshair_in_box else (0, 255, 0)
+            cv2.circle(frame, (int(frame_center_x), int(frame_center_y)), 5, crosshair_color, -1)
+            
+            # Only trigger relay automatically in auto mode
+            with command_lock:
+                if crosshair_in_box and latest_command.get('auto_mode', False):
+                    trigger_relay()
+            
+            logging.debug(f"Target coordinates (normalized): x={target_x:.2f}, y={target_y:.2f}")
+            logging.debug(f"Crosshair in box: {crosshair_in_box}")
+            return frame, target_x, target_y
+            
+        logging.debug("No valid contours found")
+        return frame, None, None
         
-        logging.info(f"Pixel offsets - x: {target_x - frame_center_x}, y: {target_y - frame_center_y}")
-        logging.info(f"Angle corrections - pan: {pan_correction:.2f}, tilt: {tilt_correction:.2f}")
-        
-        # Update command with corrections
-        with command_lock:
-            latest_command['pan_correction'] = pan_correction
-            latest_command['tilt_correction'] = tilt_correction
-        
-        return frame, target_x, target_y
-    else:
-        logging.info("No valid target found in frame")
-        # If no target found and in auto mode, deactivate relay
-        with command_lock:
-            if latest_command.get('auto_mode', False):
-                client.publish(MQTT_TOPIC_RELAY, RELAY_DEACTIVATE)
+    except Exception as e:
+        logging.error(f"Error in detect_green_objects: {e}")
+        logging.error(traceback.format_exc())
         return frame, None, None
 
-def find_dynamixel_port():
-    """Automatically detect the Dynamixel U2D2 controller port."""
-    try:
-        # List all serial ports
-        ports = list(serial.tools.list_ports.comports())
-        print(f"Available ports: {[port.device for port in ports]}", flush=True)
-        
-        # First, try to find U2D2 by its typical USB ID
-        for port in ports:
-            if "FT232R" in port.description or "U2D2" in port.description:
-                print(f"Found potential U2D2 device at {port.device}", flush=True)
-                port_handler = PortHandler(port.device)
-                if port_handler.openPort():
-                    print(f"Opened port {port.device}", flush=True)
-                    if port_handler.setBaudRate(BAUDRATE):
-                        print(f"Set baud rate to {BAUDRATE}", flush=True)
-                        packet_handler = PacketHandler(PROTOCOL_VERSION)
-                        # Try to ping both servos
-                        for dxl_id in [DXL1_ID, DXL2_ID]:
-                            dxl_model_number, dxl_comm_result, dxl_error = packet_handler.ping(port_handler, dxl_id)
-                            if dxl_comm_result == COMM_SUCCESS:
-                                print(f"Successfully pinged Dynamixel ID {dxl_id} on port {port.device}", flush=True)
-                                return port_handler, packet_handler
-                    port_handler.closePort()
-
-        # If U2D2 not found by description, try /dev/ttyUSB* devices
-        for port in ports:
-            if "ttyUSB" in port.device:
-                print(f"Trying USB device at {port.device}", flush=True)
-                port_handler = PortHandler(port.device)
-                if port_handler.openPort():
-                    print(f"Opened port {port.device}", flush=True)
-                    if port_handler.setBaudRate(BAUDRATE):
-                        print(f"Set baud rate to {BAUDRATE}", flush=True)
-                        packet_handler = PacketHandler(PROTOCOL_VERSION)
-                        # Try to ping both servos
-                        for dxl_id in [DXL1_ID, DXL2_ID]:
-                            dxl_model_number, dxl_comm_result, dxl_error = packet_handler.ping(port_handler, dxl_id)
-                            if dxl_comm_result == COMM_SUCCESS:
-                                print(f"Successfully pinged Dynamixel ID {dxl_id} on port {port.device}", flush=True)
-                                return port_handler, packet_handler
-                    port_handler.closePort()
-
-        print("Could not find U2D2 device", flush=True)
-        return None, None
-
-    except Exception as e:
-        print(f"Error finding Dynamixel port: {e}", flush=True)
-        import traceback
-        print(traceback.format_exc(), flush=True)
-        return None, None
-
-def initialize_servos(portHandler, packetHandler):
-    """Initialize servo objects"""
-    global pan_servo, tilt_servo
-    
-    # Store packet handler for servo control
-    pan_servo = packetHandler
-    tilt_servo = packetHandler
-    
-    # Enable torque
-    pan_servo.write1ByteTxRx(portHandler, DXL1_ID, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
-    tilt_servo.write1ByteTxRx(portHandler, DXL2_ID, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
-    
-    logging.info("Servo objects initialized")
-    return True
-
-def initialize_servo(dxl_id):
-    """Initialize a servo with extended position control mode settings."""
-    try:
-        # Set operating mode to extended position control mode (multi-turn) for pan
-        if dxl_id == DXL1_ID:
-            mode = OPERATING_MODE  # Extended position mode for pan
-        else:
-            mode = 3  # Position control mode for tilt
-        
-        dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(
-            portHandler, dxl_id, 11, mode)  # Address 11 is operating mode
-        if dxl_comm_result != COMM_SUCCESS:
-            print(f"Failed to set operating mode for ID {dxl_id}: {packetHandler.getTxRxResult(dxl_comm_result)}", flush=True)
-            return False
-
-        # Set to maximum torque
-        dxl_comm_result, dxl_error = packetHandler.write2ByteTxRx(
-            portHandler, dxl_id, 14, 1023)  # Address 14 is max torque
-        if dxl_comm_result != COMM_SUCCESS:
-            print(f"Failed to set max torque for ID {dxl_id}: {packetHandler.getTxRxResult(dxl_comm_result)}", flush=True)
-            return False
-
-        print(f"Successfully initialized servo ID {dxl_id}", flush=True)
-        return True
-        
-    except Exception as e:
-        print(f"Error initializing servo ID {dxl_id}: {str(e)}", flush=True)
-        return False
-
-def angle_to_servo_position(servo_id, angle):
-    """Convert angle in degrees to servo position value"""
-    if servo_id == DXL1_ID:  # Pan servo
-        # Convert angle to position (0-4095)
-        position = int((angle + 180.0) * (4095.0 / 360.0))
-    else:  # Tilt servo
-        # Convert angle to position (0-4095) 
-        position = int((angle + 180.0) * (4095.0 / 360.0))
-    
-    # Ensure position is within valid range
-    position = max(0, min(4095, position))
-    return position
-
-def servo_position_to_angle(dxl_id, position):
-    """Convert servo position to angle."""
-    try:
-        if dxl_id == DXL1_ID:  # Pan servo
-            rotations = (position - POSITION_CENTER) / 4096.0
-            return rotations * 360.0
-        else:  # Tilt servo
-            degrees_per_unit = 360.0 / 4096
-            angle = (position - POSITION_CENTER) * degrees_per_unit
-            return angle  # Remove the -140 offset
-    except Exception as e:
-        print(f"Error converting position to angle: {e}", flush=True)
-        return 0.0
-
-# Add at the top with other globals
-last_relay_change = 0
-RELAY_DEBOUNCE_TIME = 0.1  # 100ms debounce
-
-# MQTT callbacks
-def on_connect(client, userdata, flags, rc):
-    """Callback when client connects to MQTT broker"""
-    print(f"Connected with result code {rc}", flush=True)
-    
-    # Subscribe to all required topics
-    client.subscribe([
-        (MQTT_TOPIC_CONTROL, 0),
-        (MQTT_TOPIC_RELAY, 0),
-        (MQTT_TOPIC_COMMAND, 0),  # Add subscription to command topic
-        ("server/sensitivity", 0)
-    ])
-    
-    # Initialize with auto mode off
-    global latest_command
-    latest_command = {
-        'auto_mode': False,
-        'pan_angle': HOME_PAN_ANGLE,
-        'tilt_angle': HOME_TILT_ANGLE
-    }
-    logging.info("Connected to MQTT broker and initialized command state")
-
-def on_message(client, userdata, msg):
-    """MQTT message callback"""
-    global latest_command
-    
-    try:
-        print(f"Server received message on topic: {msg.topic}")  # Debug print
-        print(f"Payload: {msg.payload.decode()}")  # Debug print
-        
-        if msg.topic == MQTT_TOPIC_RELAY:
-            if current_platform == 'Linux':
-                relay_state = msg.payload.decode()
-                print(f"Setting relay to {relay_state}", flush=True)
-                if relay_state == RELAY_ACTIVATE:  # 'off' activates the relay
-                    GPIO.output(RELAY_PIN, GPIO.LOW)
-                    print("Relay ACTIVATED (LOW)", flush=True)
-                else:  # 'on' deactivates the relay
-                    GPIO.output(RELAY_PIN, GPIO.HIGH)
-                    print("Relay DEACTIVATED (HIGH)", flush=True)
-        elif msg.topic == MQTT_TOPIC_COMMAND:  # Handle keyboard commands
-            command = json.loads(msg.payload.decode())
-            print(f"Received command message: {command}")  # Debug print
-            
-            # Handle relative movement commands
-            with command_lock:
-                if 'pan_delta' in command:
-                    latest_command['pan_angle'] = latest_command.get('pan_angle', 0) + command['pan_delta']
-                    print(f"Updated pan angle to: {latest_command['pan_angle']}")  # Debug print
-                elif 'tilt_delta' in command:
-                    latest_command['tilt_angle'] = latest_command.get('tilt_angle', INITIAL_TILT_ANGLE) + command['tilt_delta']
-                    print(f"Updated tilt angle to: {latest_command['tilt_angle']}")  # Debug print
-        else:
-            command = json.loads(msg.payload.decode())
-            with command_lock:
-                latest_command.update(command)
-            
-    except Exception as e:
-        logging.error(f"Error processing command: {e}")
-        import traceback
-        traceback.print_exc()
-
 def camera_feed_thread():
-    global latest_frame, running
+    """Thread to handle camera feed and processing."""
+    global latest_frame, running, latest_detection
     
     while running:
         try:
-            # Handle keyboard input for manual mode
-            key = cv2.waitKey(1) & 0xFF
-            if key != 255:  # If a key was pressed
-                with command_lock:
-                    if not latest_command.get('auto_mode', False):  # Only in manual mode
-                        if key == ord(' '):  # Spacebar
-                            client.publish(MQTT_TOPIC_RELAY, RELAY_ACTIVATE)
-                            time.sleep(0.1)  # Brief delay
-                            client.publish(MQTT_TOPIC_RELAY, RELAY_DEACTIVATE)
-                        elif key == 81 or key == ord('a'):  # Left arrow or 'a'
-                            latest_command['pan_angle'] = min(latest_command.get('pan_angle', 0) + 5, PAN_ANGLE_MAX)
-                        elif key == 83 or key == ord('d'):  # Right arrow or 'd'
-                            latest_command['pan_angle'] = max(latest_command.get('pan_angle', 0) - 5, PAN_ANGLE_MIN)
-                        elif key == 82 or key == ord('w'):  # Up arrow or 'w'
-                            latest_command['tilt_angle'] = min(latest_command.get('tilt_angle', TILT_ANGLE_MIN) + 5, TILT_ANGLE_MAX)
-                        elif key == 84 or key == ord('s'):  # Down arrow or 's'
-                            latest_command['tilt_angle'] = max(latest_command.get('tilt_angle', TILT_ANGLE_MAX) - 5, TILT_ANGLE_MIN)
-            
             # Get new frame
             if current_platform == 'Darwin':
                 ret, frame = cap.read()
@@ -584,6 +734,12 @@ def camera_feed_thread():
             # Process frame once for green objects and bounding boxes
             processed_frame, target_x, target_y = detect_green_objects(frame.copy())
             
+            # Debug detection results
+            if target_x is not None and target_y is not None:
+                logging.debug(f"Detected green object at x={target_x}, y={target_y}")
+            else:
+                logging.debug("No green object detected in frame")
+            
             # Store detection results
             with detection_lock:
                 latest_detection = {
@@ -591,6 +747,7 @@ def camera_feed_thread():
                     'target_x': target_x,
                     'target_y': target_y
                 }
+                logging.debug(f"Updated latest_detection: {latest_detection}")
             
             # Encode and publish frame
             _, img_encoded = cv2.imencode('.jpg', processed_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
@@ -599,228 +756,131 @@ def camera_feed_thread():
             time.sleep(0.01)  # 100Hz max update rate
             
         except Exception as e:
-            print(f"Error in camera thread: {e}")
-            traceback.print_exc()
+            logging.error(f"Error in camera thread: {e}")
+            logging.error(traceback.format_exc())
             time.sleep(1)
 
-def calculate_lead(current_position, target_position, velocity, tof):
-    """Calculate the lead based on current position, target position, velocity, and TOF."""
-    # Calculate the lead distance
-    lead_distance = velocity * tof
-    lead_position = target_position + lead_distance
-    return lead_position
-
-def calculate_relative_position(current_position, target_position):
-    """Calculate the relative position from the current position."""
-    return target_position - current_position
-
-def simulate_servo_movement():
-    """Simulate servo movement on macOS."""
-    global latest_frame, tof
-    previous_bbox_center = None
-    current_x, current_y = HOME_PAN_ANGLE, HOME_TILT_ANGLE
-
-    while True:
-        with frame_lock:
-            if latest_frame is None:
-                time.sleep(0.05)
-                continue
-            frame = latest_frame.copy()
-
-        bbox = detect_green_objects(frame)
-        if bbox:
-            bbox_center = (bbox['center_x'], bbox['center_y'])
-
-            # Calculate velocity if previous center is available
-            if previous_bbox_center:
-                velocity_x = bbox_center[0] - previous_bbox_center[0]
-                velocity_y = bbox_center[1] - previous_bbox_center[1]
-            else:
-                velocity_x, velocity_y = 0, 0
-
-            # Calculate lead positions
-            lead_x = calculate_lead(current_x, bbox_center[0], velocity_x, tof)
-            lead_y = calculate_lead(current_y, bbox_center[1], velocity_y, tof)
-
-            # Update previous center
-            previous_bbox_center = bbox_center
-
-            # Adjust the factor for speed and TOF influence
-            current_x += (lead_x - current_x) * 0.1  # Adjust the factor for speed
-            current_y += (lead_y - current_y) * 0.1
-
-            # Log the detailed calculations
-            logging.debug(f"TOF: {tof}, Pan Angle: {latest_command['pan_angle']}, Tilt Angle: {latest_command['tilt_angle']}")
-            logging.debug(f"Velocity X: {velocity_x}, Velocity Y: {velocity_y}")
-            logging.debug(f"Lead X: {lead_x}, Lead Y: {lead_y}")
-            logging.debug(f"Simulated position: x={current_x}, y={current_y}")
-
-        time.sleep(0.05)
-
-def servo_update_thread():
-    """Thread to continuously update servo positions"""
-    global latest_command, HOME_PAN_ANGLE, HOME_TILT_ANGLE
-    
+def control_servos():
     try:
         while running:
-            with command_lock:
-                command = latest_command.copy()
-                
-                # Get current state and corrections
-                auto_mode = command.get('auto_mode', False)
-                
-                if auto_mode:
-                    # Only process corrections in auto mode
-                    pan_correction = command.get('pan_correction', 0.0) * 4.0  # Doubled from 2.0 to 4.0 for faster pan
-                    tilt_correction = command.get('tilt_correction', 0.0)
-                    
-                    # Only apply corrections above threshold
-                    if abs(pan_correction) < MIN_CORRECTION:
-                        pan_correction = 0
-                    if abs(tilt_correction) < MIN_CORRECTION:
-                        tilt_correction = 0
-                        
-                    # Calculate target positions (add corrections instead of subtracting)
-                    target_pan = current_pan_angle + pan_correction
-                    target_tilt = current_tilt_angle + tilt_correction
-                    
-                    # Clamp targets to valid ranges
-                    target_pan = max(PAN_ANGLE_MIN, min(PAN_ANGLE_MAX, target_pan))
-                    target_tilt = max(TILT_ANGLE_MIN, min(TILT_ANGLE_MAX, target_tilt))
-                    
-                    # Calculate movement deltas
-                    pan_delta = target_pan - current_pan_angle
-                    tilt_delta = target_tilt - current_tilt_angle
-                    
-                    # Limit movement speed
-                    pan_delta = max(-MAX_SPEED, min(MAX_SPEED, pan_delta))
-                    tilt_delta = max(-MAX_SPEED, min(MAX_SPEED, tilt_delta))
-                    
-                    # Update positions with smoothing
-                    current_pan_angle += pan_delta * SMOOTHING_FACTOR
-                    current_tilt_angle += tilt_delta * SMOOTHING_FACTOR
-                    
-                    # Send servo positions
-                    servo_command = {
-                        'pan_angle': current_pan_angle,
-                        'tilt_angle': current_tilt_angle
-                    }
-                    client.publish(MQTT_TOPIC_CONTROL, json.dumps(servo_command))
-                    
-                    # Send relay command separately
-                    relay_state = RELAY_ACTIVATE if command.get('trigger', False) else RELAY_DEACTIVATE
-                    client.publish(MQTT_TOPIC_RELAY, relay_state)
-                    
-                else:
-                    # In manual mode or initial state, use commanded angles or stay at home
-                    current_pan_angle = command.get('pan_angle', HOME_PAN_ANGLE)
-                    current_tilt_angle = command.get('tilt_angle', HOME_TILT_ANGLE)
-                    
-                    # Send servo positions
-                    servo_command = {
-                        'pan_angle': current_pan_angle,
-                        'tilt_angle': current_tilt_angle
-                    }
-                    client.publish(MQTT_TOPIC_CONTROL, json.dumps(servo_command))
-                    
-                    # Always deactivate relay in manual mode
-                    client.publish(MQTT_TOPIC_RELAY, RELAY_DEACTIVATE)
-                
-                # Update command with current positions
-                command['pan_angle'] = current_pan_angle
-                command['tilt_angle'] = current_tilt_angle
-                latest_command.update(command)
+            # Get current positions
+            dxl_present_position1 = read_servo_position(DXL1_ID)
+            dxl_present_position2 = read_servo_position(DXL2_ID)
             
-            if current_platform == 'Linux':
-                try:
-                    # Convert angles to servo positions
-                    pan_position = angle_to_servo_position(DXL1_ID, current_pan_angle)
-                    tilt_position = angle_to_servo_position(DXL2_ID, current_tilt_angle)
-                    
-                    # Write positions to servos
-                    pan_result = pan_servo.write4ByteTxRx(portHandler, DXL1_ID, ADDR_GOAL_POSITION, pan_position)
-                    tilt_result = tilt_servo.write4ByteTxRx(portHandler, DXL2_ID, ADDR_GOAL_POSITION, tilt_position)
-                    
-                    if pan_result != COMM_SUCCESS or tilt_result != COMM_SUCCESS:
-                        logging.error(f"Failed to write to servos - Pan: {pan_result}, Tilt: {tilt_result}")
-                    
-                except Exception as e:
-                    logging.error(f"Error updating servos: {e}")
-            
-            time.sleep(1.0 / UPDATE_RATE_HZ)  # Maintain consistent update rate
-            
-    except Exception as e:
-        logging.error(f"Error in servo update thread: {e}")
-        traceback.print_exc()
-
-def initialize_home_position():
-    """Initialize HOME position based on current servo positions"""
-    global HOME_PAN_ANGLE, HOME_TILT_ANGLE, latest_command
-    
-    # On Linux, read actual servo positions
-    if current_platform == 'Linux':
-        try:
-            # Read current positions from servos
-            dxl_comm_result1, dxl_error1, pan_pos = packetHandler.read4ByteTxRx(portHandler, DXL1_ID, ADDR_PRESENT_POSITION)
-            dxl_comm_result2, dxl_error2, tilt_pos = packetHandler.read4ByteTxRx(portHandler, DXL2_ID, ADDR_PRESENT_POSITION)
-            
-            if dxl_comm_result1 == COMM_SUCCESS and dxl_error1 == 0 and dxl_comm_result2 == COMM_SUCCESS and dxl_error2 == 0:
-                # Convert to angles using the same conversion as in servo_position_to_angle
-                HOME_PAN_ANGLE = servo_position_to_angle(DXL1_ID, pan_pos)
-                HOME_TILT_ANGLE = servo_position_to_angle(DXL2_ID, tilt_pos)
+            if dxl_present_position1 is not None and dxl_present_position2 is not None:
+                logging.debug(f"Current servo positions - Pan: {dxl_present_position1}, Tilt: {dxl_present_position2}")
                 
-                # Initialize latest_command with current positions
+                # Only move servos if we've received a command
                 with command_lock:
-                    latest_command = {
-                        'pan_angle': HOME_PAN_ANGLE,
-                        'tilt_angle': HOME_TILT_ANGLE,
-                        'auto_mode': False
-                    }
-            else:
-                logging.error("Failed to read servo positions")
-                return False
+                    if 'command_received' in latest_command and latest_command['command_received']:
+                        if latest_command.get('auto_mode', False):
+                            # Get latest tracking data
+                            with detection_lock:
+                                if latest_detection is None:
+                                    target_pan_position = initial_pan_position
+                                    target_tilt_position = initial_tilt_position
+                                    logging.debug(f"Auto mode - No target, returning to home position: Pan={target_pan_position}, Tilt={target_tilt_position}")
+                                else:
+                                    target_x = latest_detection.get('target_x', 0)
+                                    target_y = latest_detection.get('target_y', 0)
+                                    target_detected = target_x is not None and target_y is not None
+                                    
+                                    if target_detected:
+                                        # Convert screen coordinates to angle adjustments
+                                        pan_adjustment = target_x * sensitivity * 50  # Increased from 25 to 50 degrees per screen width
+                                        tilt_adjustment = target_y * sensitivity * 10  # Increased from 5 to 10 degrees per screen height
+                                        
+                                        # Calculate target positions
+                                        target_pan_position = dxl_present_position1 + int(pan_adjustment * 2048 / 180.0)
+                                        # For tilt, move up (increase position) when target is above center (negative y)
+                                        target_tilt_position = dxl_present_position2 + int(tilt_adjustment * 2048 / 180.0)
+                                        
+                                        logging.debug(f"Auto mode tracking - Target at ({target_x:.2f}, {target_y:.2f})")
+                                        logging.debug(f"Adjustments - Pan: {pan_adjustment:.2f}°, Tilt: {tilt_adjustment:.2f}°")
+                                        logging.debug(f"Target positions - Pan: {target_pan_position}, Tilt: {target_tilt_position}")
+                                    else:
+                                        # No target detected, return to home position
+                                        target_pan_position = initial_pan_position
+                                        target_tilt_position = initial_tilt_position
+                                        logging.debug("Auto mode - No target detected")
+                        else:
+                            # Manual control logic
+                            logging.debug("Manual mode active")
+                            target_pan_position = initial_pan_position + int(latest_command.get('pan_angle', 0) * 2048 / 180.0)
+                            target_tilt_position = initial_tilt_position + int(latest_command.get('tilt_angle', 0) * 2048 / 180.0)
+                            logging.debug(f"Manual mode - Target angles: Pan={latest_command.get('pan_angle', 0)}, Tilt={latest_command.get('tilt_angle', 0)}")
+
+                        # Apply position limits with more logging
+                        original_pan = target_pan_position
+                        target_pan_position = max(PAN_MIN_POSITION, min(PAN_MAX_POSITION, target_pan_position))
+                        if original_pan != target_pan_position:
+                            logging.debug(f"Pan position limited from {original_pan} to {target_pan_position}")
+                        logging.debug(f"Writing pan position: {target_pan_position}")
+                        write_servo_position(DXL1_ID, target_pan_position)
+
+                        original_tilt = target_tilt_position
+                        target_tilt_position = max(TILT_MIN_POSITION, min(TILT_MAX_POSITION, target_tilt_position))
+                        if original_tilt != target_tilt_position:
+                            logging.debug(f"Tilt position limited from {original_tilt} to {target_tilt_position}")
+                        logging.debug(f"Writing tilt position: {target_tilt_position}")
+                        write_servo_position(DXL2_ID, target_tilt_position)
+                    else:
+                        logging.debug("No command received yet, servos at rest")
+
+            time.sleep(0.01)  # Small delay to prevent CPU overload
+
+    except Exception as e:
+        logging.error(f"Error in control loop: {e}")
+        logging.error(traceback.format_exc())
+        # Restart the control loop if it crashes
+        time.sleep(1)
+        control_servos()
+
+def write_servo_position(dxl_id, position, retries=3):
+    """Write position to servo with retries"""
+    for attempt in range(retries):
+        try:
+            original_position = position
+            if dxl_id == DXL1_ID:  # Pan servo valid range 0–4095
+                position = max(PAN_MIN_POSITION, min(position, PAN_MAX_POSITION))
+                logging.debug(f"Pan position before/after limits: {original_position}/{position}")
+            else:  # Tilt servo
+                position = max(TILT_MIN_POSITION, min(position, TILT_MAX_POSITION))
+                logging.debug(f"Tilt position before/after limits: {original_position}/{position}")
+                logging.debug(f"Tilt servo write attempt {attempt + 1}:")
+                logging.debug(f"  Initial position: {initial_tilt_position}")
+                logging.debug(f"  Current limits: TILT_MIN_POSITION={TILT_MIN_POSITION}, TILT_MAX_POSITION={TILT_MAX_POSITION}")
+                logging.debug(f"  Writing position value: {position}")
+            # Use 4-byte write for both servos in extended position mode
+            dxl_comm_result, dxl_error = packetHandler.write4ByteTxRx(
+                portHandler, dxl_id, ADDR_GOAL_POSITION, position)
             
+            if dxl_comm_result == COMM_SUCCESS and dxl_error == 0:
+                logging.debug(f"Successfully wrote position {position} to servo {dxl_id}")
+                return True
+            else:
+                logging.warning(f"Failed to write servo {dxl_id} position on attempt {attempt + 1}:")
+                logging.warning(f"Comm result: {packetHandler.getTxRxResult(dxl_comm_result)}")
+                logging.warning(f"Error: {packetHandler.getRxPacketError(dxl_error)}")
+                logging.warning(f"Position value that failed: {position}")
+                
         except Exception as e:
-            logging.error(f"Error reading servo positions: {e}")
-            return False
-    else:
-        # On macOS, use simulated values
-        HOME_PAN_ANGLE = 0.0
-        HOME_TILT_ANGLE = -180.0
-        with command_lock:
-            latest_command = {
-                'pan_angle': HOME_PAN_ANGLE,
-                'tilt_angle': HOME_TILT_ANGLE,
-                'auto_mode': False
-            }
+            logging.error(f"Error writing servo {dxl_id} position on attempt {attempt + 1}: {e}")
+            
+        # Small delay before retry
+        time.sleep(0.1)
     
-    logging.info(f"Initialized HOME position to: pan={HOME_PAN_ANGLE}, tilt={HOME_TILT_ANGLE}")
-    return True
+    logging.error(f"Failed to write servo {dxl_id} position after {retries} attempts")
+    return False
 
-# Add with other globals
-detection_lock = threading.Lock()
-latest_detection = None
-
-# Add speed control function
-def set_speed(speed_setting):
-    """Set servo speed based on UI setting (1-10)"""
-    global MAX_SPEED_DEG_PER_SEC, MAX_SPEED
-    
-    # Map speed setting 1-10 to degrees per second
-    # Setting of 3 = 45 deg/sec
-    # Setting of 5 = 75 deg/sec (middle)
-    # Setting of 10 = 150 deg/sec
-    MAX_SPEED_DEG_PER_SEC = speed_setting * 15.0  # 15 deg/sec per unit
-    MAX_SPEED = MAX_SPEED_DEG_PER_SEC / UPDATE_RATE_HZ
-    logging.info(f"Speed set to {speed_setting} ({MAX_SPEED_DEG_PER_SEC} deg/sec)")
-
-# Main execution
+# Then the main execution block
 if __name__ == "__main__":
     # Initialize MQTT client with protocol v3
     client = mqtt.Client(client_id="turret_server", protocol=mqtt.MQTTv311)
     client.on_connect = on_connect
-    client.on_message = on_message
-
+    client.on_message = on_command
+    client.on_disconnect = on_disconnect
+    
     # Set MQTT options for better performance
     client.max_queued_messages_set(1)  # Only queue latest message
     client.max_inflight_messages_set(1)  # Only allow one in-flight message
@@ -839,11 +899,6 @@ if __name__ == "__main__":
     # Start MQTT loop in background thread
     client.loop_start()
 
-    # Subscribe to topics with QoS 0
-    client.subscribe([(MQTT_TOPIC_CONTROL, 0), 
-                     (MQTT_TOPIC_PLATFORM_REQUEST, 0),
-                     ("server/sensitivity", 0)])
-
     # Initialize camera
     if not initialize_camera():
         print("Failed to initialize camera")
@@ -858,67 +913,20 @@ if __name__ == "__main__":
                 print("Failed to initialize Dynamixel servos", flush=True)
                 sys.exit(1)
                 
-            # Initialize servo objects
+            # Initialize servos
             if not initialize_servos(portHandler, packetHandler):
-                print("Failed to initialize servo objects", flush=True)
-                sys.exit(1)
-
-            # Enable Torque for both servos
-            for dxl_id in [DXL1_ID, DXL2_ID]:
-                dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(
-                    portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
-                if dxl_comm_result != COMM_SUCCESS or dxl_error != 0:
-                    logging.error(f"Failed to enable torque on Dynamixel#{dxl_id}: "
-                                  f"{packetHandler.getTxRxResult(dxl_comm_result)}, "
-                                  f"Error: {packetHandler.getRxPacketError(dxl_error)}")
-                    sys.exit()
-                else:
-                    logging.info(f"Torque enabled on Dynamixel#{dxl_id}")
-
-            # Set torque for tilt servo
-            dxl_comm_result, dxl_error = packetHandler.write2ByteTxRx(
-                portHandler, DXL2_ID, ADDR_GOAL_TORQUE, DXL_GOAL_TORQUE)
-            if dxl_comm_result != COMM_SUCCESS or dxl_error != 0:
-                logging.error(f"Failed to set goal torque on Dynamixel#{DXL2_ID}: "
-                              f"{packetHandler.getTxRxResult(dxl_comm_result)}, "
-                              f"Error: {packetHandler.getRxPacketError(dxl_error)}")
-            else:
-                logging.info(f"Goal torque set to {DXL_GOAL_TORQUE} on Dynamixel#{DXL2_ID}")
-
-            # Initialize GroupSyncWrite instance
-            groupSyncWrite = GroupSyncWrite(portHandler, packetHandler, ADDR_GOAL_POSITION, LEN_GOAL_POSITION)
-
-            # Initialize each servo with proper operating mode
-            if not initialize_servo(DXL1_ID) or not initialize_servo(DXL2_ID):
                 print("Failed to initialize servos", flush=True)
                 sys.exit(1)
 
-            # Initialize latest_command with current positions
-            with command_lock:
-                latest_command = {}
-                for dxl_id in [DXL1_ID, DXL2_ID]:
-                    present_position, dxl_comm_result, dxl_error = packetHandler.read4ByteTxRx(
-                        portHandler, dxl_id, ADDR_PRESENT_POSITION)
-                    if dxl_comm_result == COMM_SUCCESS and dxl_error == 0:
-                        angle = servo_position_to_angle(dxl_id, present_position)
-                        if dxl_id == DXL1_ID:
-                            latest_command['pan_angle'] = angle
-                        else:
-                            latest_command['tilt_angle'] = angle
-                        print(f"Servo ID {dxl_id} current position: {present_position} (angle: {angle}°)", flush=True)
-
-            # Initialize HOME position after hardware is ready
-            initialize_home_position()
-
-            # Initialize servo objects
-            initialize_servos(portHandler, packetHandler)
+            # Initialize home position
+            if not initialize_home_position():
+                print("Warning: Using default home position values", flush=True)
 
             print("Hardware initialization complete", flush=True)
 
         except Exception as e:
             print(f"Error initializing hardware: {e}", flush=True)
-            import traceback
-            print(traceback.format_exc(), flush=True)
+            traceback.print_exc()
             sys.exit(1)
     else:
         # Initialize HOME position for macOS
@@ -930,7 +938,7 @@ if __name__ == "__main__":
     camera_thread.start()
 
     if current_platform == 'Linux':
-        servo_thread = threading.Thread(target=servo_update_thread)
+        servo_thread = threading.Thread(target=control_servos)
         servo_thread.daemon = True
         servo_thread.start()
 
@@ -968,3 +976,12 @@ if __name__ == "__main__":
         if current_platform == 'Linux':
             GPIO.cleanup()
             portHandler.closePort()
+
+def on_sensitivity_update(client, userdata, message):
+    global sensitivity
+    try:
+        payload = json.loads(message.payload)
+        sensitivity = payload.get('sensitivity', 1.0)
+        print(f"Updated sensitivity to: {sensitivity}", flush=True)
+    except Exception as e:
+        print(f"Error processing sensitivity update: {e}", flush=True)
