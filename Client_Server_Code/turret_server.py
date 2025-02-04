@@ -176,6 +176,10 @@ PAN_MAX_POSITION = 4095    # Changed from 3072 to 4095 for maximum right movemen
 TILT_MIN_POSITION = 200    # Keep current tilt limits
 TILT_MAX_POSITION = 3800   # Keep current tilt limits
 
+# Add at the top with other globals
+previous_error_x = 0
+previous_error_y = 0
+
 # Move this function up, before servo_update_thread
 def angle_to_servo_position(servo_id, angle):
     """Convert angle in degrees to servo position"""
@@ -661,42 +665,42 @@ def detect_green_objects(frame):
         # Find contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Debug contour info
-        logging.debug(f"Found {len(contours)} contours")
-        
         # Filter contours by area
         valid_contours = [c for c in contours if cv2.contourArea(c) >= MIN_CONTOUR_AREA]
-        logging.debug(f"Found {len(valid_contours)} valid contours")
         
         # Only process the largest contour if we found one
         if valid_contours:
             largest_contour = max(valid_contours, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(largest_contour)
             
-            # Calculate normalized target coordinates (-1 to 1)
-            target_x = ((x + w/2) - frame_center_x) / (width/2)
-            target_y = ((y + h/2) - frame_center_y) / (height/2)
+            # Calculate center of bounding box
+            target_center_x = x + w/2
+            target_center_y = y + h/2
+            
+            # Calculate error from frame center to target center
+            error_x = (target_center_x - frame_center_x) / (width/2)  # Normalized to [-1, 1]
+            error_y = (target_center_y - frame_center_y) / (height/2)  # Normalized to [-1, 1]
             
             # Draw bounding box
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
             
-            # Check if crosshair (center of frame) is inside bounding box
-            crosshair_in_box = (x < frame_center_x < x + w) and (y < frame_center_y < y + h)
+            # Draw frame center crosshair in green
+            cv2.line(frame, (int(frame_center_x-10), int(frame_center_y)), 
+                    (int(frame_center_x+10), int(frame_center_y)), (0, 255, 0), 2)
+            cv2.line(frame, (int(frame_center_x), int(frame_center_y-10)), 
+                    (int(frame_center_x), int(frame_center_y+10)), (0, 255, 0), 2)
             
-            # Draw crosshair in red if inside box, green if outside
-            crosshair_color = (0, 0, 255) if crosshair_in_box else (0, 255, 0)
-            cv2.circle(frame, (int(frame_center_x), int(frame_center_y)), 5, crosshair_color, -1)
+            # Check if crosshair is inside bounding box
+            crosshair_in_box = (x < frame_center_x < (x + w)) and (y < frame_center_y < (y + h))
             
-            # Only trigger relay automatically in auto mode
+            # Only trigger relay automatically in auto mode if crosshair is in box
             with command_lock:
                 if crosshair_in_box and latest_command.get('auto_mode', False):
                     trigger_relay()
             
-            logging.debug(f"Target coordinates (normalized): x={target_x:.2f}, y={target_y:.2f}")
-            logging.debug(f"Crosshair in box: {crosshair_in_box}")
-            return frame, target_x, target_y
+            logging.debug(f"Target errors: x={error_x:.3f}, y={error_y:.3f}, in_box={crosshair_in_box}")
+            return frame, error_x, error_y
             
-        logging.debug("No valid contours found")
         return frame, None, None
         
     except Exception as e:
@@ -762,47 +766,55 @@ def camera_feed_thread():
 
 def control_servos():
     try:
+        global previous_error_x, previous_error_y
         while running:
             # Get current positions
             dxl_present_position1 = read_servo_position(DXL1_ID)
             dxl_present_position2 = read_servo_position(DXL2_ID)
             
             if dxl_present_position1 is not None and dxl_present_position2 is not None:
-                logging.debug(f"Current servo positions - Pan: {dxl_present_position1}, Tilt: {dxl_present_position2}")
-                
-                # Only move servos if we've received a command
                 with command_lock:
                     if 'command_received' in latest_command and latest_command['command_received']:
                         if latest_command.get('auto_mode', False):
-                            # Get latest tracking data
                             with detection_lock:
                                 if latest_detection is None:
                                     target_pan_position = initial_pan_position
                                     target_tilt_position = initial_tilt_position
-                                    logging.debug(f"Auto mode - No target, returning to home position: Pan={target_pan_position}, Tilt={target_tilt_position}")
                                 else:
-                                    target_x = latest_detection.get('target_x', 0)
-                                    target_y = latest_detection.get('target_y', 0)
-                                    target_detected = target_x is not None and target_y is not None
+                                    error_x = latest_detection.get('target_x')
+                                    error_y = latest_detection.get('target_y')
+                                    target_detected = error_x is not None and error_y is not None
                                     
                                     if target_detected:
-                                        # Convert screen coordinates to angle adjustments
-                                        pan_adjustment = target_x * sensitivity * 50  # Increased from 25 to 50 degrees per screen width
-                                        tilt_adjustment = target_y * sensitivity * 10  # Increased from 5 to 10 degrees per screen height
+                                        # Add small deadzone to prevent tiny corrections
+                                        if abs(error_x) > 0.005:  # Keep small deadzone
+                                            # Increase rightward offset and gain
+                                            pan_adjustment = (error_x + 0.015) * sensitivity * 300  # More offset and higher gain
+                                        else:
+                                            pan_adjustment = 0
+                                            
+                                        # Add slight upward offset to compensate for camera alignment
+                                        if abs(error_y) > 0.005:  # Keep small deadzone
+                                            tilt_adjustment = (error_y + 0.02) * sensitivity * 15  # Keep current tilt settings
+                                        else:
+                                            tilt_adjustment = 0
                                         
-                                        # Calculate target positions
-                                        target_pan_position = dxl_present_position1 + int(pan_adjustment * 2048 / 180.0)
-                                        # For tilt, move up (increase position) when target is above center (negative y)
-                                        target_tilt_position = dxl_present_position2 + int(tilt_adjustment * 2048 / 180.0)
+                                        # Keep tight rate limiting
+                                        MAX_ADJUSTMENT = 100  # Keep the smooth motion limit
                                         
-                                        logging.debug(f"Auto mode tracking - Target at ({target_x:.2f}, {target_y:.2f})")
+                                        pan_delta = int(pan_adjustment * 2048 / 180.0)
+                                        pan_delta = max(min(pan_delta, MAX_ADJUSTMENT), -MAX_ADJUSTMENT)
+                                        target_pan_position = dxl_present_position1 + pan_delta
+                                        
+                                        tilt_delta = int(tilt_adjustment * 2048 / 180.0)
+                                        tilt_delta = max(min(tilt_delta, MAX_ADJUSTMENT), -MAX_ADJUSTMENT)
+                                        target_tilt_position = dxl_present_position2 + tilt_delta
+                                        
+                                        logging.debug(f"Auto mode - Errors: x={error_x:.3f}, y={error_y:.3f}")
                                         logging.debug(f"Adjustments - Pan: {pan_adjustment:.2f}°, Tilt: {tilt_adjustment:.2f}°")
-                                        logging.debug(f"Target positions - Pan: {target_pan_position}, Tilt: {target_tilt_position}")
                                     else:
-                                        # No target detected, return to home position
                                         target_pan_position = initial_pan_position
                                         target_tilt_position = initial_tilt_position
-                                        logging.debug("Auto mode - No target detected")
                         else:
                             # Manual control logic
                             logging.debug("Manual mode active")
