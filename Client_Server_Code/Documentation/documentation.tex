@@ -1,0 +1,365 @@
+\documentclass[12pt]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+
+\setlength{\headheight}{14.5pt}  % Fix the header height warning
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Turret System Documentation}
+\lhead{GelBlaster - Wingman}
+\rfoot{\thepage}
+
+\title{Turret System Client--Server Application Documentation}
+\author{GelBlaster - Wingman}
+\date{February 2025}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+\subsection{Overview}
+This documentation covers the client--server turret system application designed to provide remote control, camera feed handling, object detection, and hardware control (including servos and relay mechanisms) via MQTT communication. The system integrates software components with hardware (cameras, Dynamixel servos, GPIO, etc.) and provides both manual and automatic operational modes.
+
+\subsection{Purpose and Scope}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Purpose:} To document the design, architecture, installation, configuration, and usage of the turret system application. This documentation serves as a technical reference for developers, integrators, and maintainers.
+    \item \textbf{Scope:} The document covers both the client and server code, explains the MQTT topics used for communication, details hardware requirements, and provides troubleshooting and future enhancement guidelines.
+\end{itemize}
+
+\subsection{Target Audience}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Robotics Enthusiasts:} Makers and hobbyists interested in building automated turret systems or similar robotic projects
+    \item \textbf{Software Developers:} Engineers working on computer vision, robotics control systems, or MQTT-based applications
+    \item \textbf{Hardware Integrators:} Those working with Dynamixel servos, cameras, and GPIO systems
+    \item \textbf{Gelblaster Community:} Users looking to enhance their Gelblaster XL with automated targeting capabilities
+    \item \textbf{Venue Operators:} Gelblaster arena and entertainment venue operators interested in adding automated turret systems to their facilities
+    \item \textbf{Academic/Research:} Students and researchers in robotics, computer vision, or human-robot interaction
+\end{itemize}
+
+\section{System Architecture}
+
+\subsection{High-Level Overview}
+The turret system is composed of two major parts:
+\begin{description}
+    \item[Client Application] Provides a graphical user interface (GUI) using OpenCV, processes incoming camera feed images, handles user inputs (keyboard and mouse), and sends control commands via MQTT.
+    \item[Server Application] Interfaces with hardware components (camera, servos, relay), processes sensor data, detects objects (e.g., green objects), controls servo movements, and triggers the relay. It publishes the camera feed and status updates over MQTT.
+\end{description}
+
+\subsection{Client and Server Roles}
+\textbf{Client:}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item Receives live video feed from the server.
+    \item Provides a control panel with manual override options (e.g., toggle auto/manual mode, adjust speed).
+    \item Processes keyboard and mouse events to send directional commands.
+    \item Publishes commands (e.g., pan/tilt adjustments, trigger commands) to MQTT topics.
+\end{itemize}
+
+\textbf{Server:}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item Captures video frames using a connected camera (or an OAK-D device).
+    \item Processes frames for object detection (e.g., identifying green objects).
+    \item Reads and writes servo positions via Dynamixel controllers.
+    \item Controls hardware relays (with GPIO) and publishes sensor/servo status.
+    \item Subscribes to MQTT topics to receive command updates from the client.
+\end{itemize}
+
+\subsection{MQTT Communication and Topics}
+The system uses the Paho MQTT library for messaging. Key topics include:
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Client-to-Server Topics:}
+        \begin{itemize}[leftmargin=*, label={*}]
+            \item \texttt{dpad/commands}: Contains directional commands, auto-mode toggles, and speed settings.
+            \item \texttt{relay/command}: Commands for relay activation/deactivation.
+            \item \texttt{server/sensitivity}: Commands to adjust sensitivity settings.
+        \end{itemize}
+    \item \textbf{Server-to-Client Topics:}
+        \begin{itemize}[leftmargin=*, label={*}]
+            \item \texttt{camera/feed}: Encoded JPEG images from the camera.
+            \item \texttt{camera/bbox}: Bounding box data for detected objects.
+            \item \texttt{servo/status}: Current servo positions and status updates.
+            \item \texttt{server/tof}: Time-of-flight sensor data (if applicable).
+        \end{itemize}
+\end{itemize}
+
+\subsection{Hardware and Software Dependencies}
+\textbf{Hardware:}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item Camera (webcam or OAK-D device)
+    \item Dynamixel Servos (Pan and Tilt)
+    \item Relay (controlled via GPIO, e.g., on a Linux-based system)
+    \item (Optional) Input devices (gamepad, keyboard)
+\end{itemize}
+
+\textbf{Software:}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item Python 3.x
+    \item OpenCV
+    \item NumPy
+    \item Paho MQTT
+    \item Pygame
+    \item Platform-specific libraries (e.g., Jetson.GPIO, depthai, dynamixel\_sdk)
+    \item Additional dependencies as required by the hardware (e.g., serial, netifaces)
+\end{itemize}
+
+\section{Software Components}
+
+\subsection{Client Application}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{User Interface:} An OpenCV window displays the camera feed alongside a control panel. The control panel contains an Auto/Manual mode toggle button, a speed slider with touch-friendly controls, and real-time MQTT connection status.
+    \item \textbf{Camera Feed Handling:} The client subscribes to the \texttt{camera/feed} topic, decodes JPEG images, and overlays additional UI elements (such as crosshairs and bounding boxes).
+    \item \textbf{User Input Handling:} Keyboard (e.g., arrow keys, spacebar, ESC) and mouse events are captured. These inputs are translated into MQTT commands for panning, tilting, and firing the relay.
+    \item \textbf{MQTT Integration:} The client connects to the MQTT broker, subscribes to several topics, and publishes control messages. Callback functions (e.g., \texttt{on\_connect}, \texttt{on\_message}) handle connection events and incoming messages.
+\end{itemize}
+
+\subsection{Server Application}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Hardware Initialization:} On startup, the server configures the camera (using depthai or OpenCV based on the platform), initializes the GPIO for relay control (Linux only), and detects and initializes Dynamixel servos using the Dynamixel SDK.
+    \item \textbf{Camera Feed and Processing:} The server continuously captures frames from the camera, processes them (e.g., flips the image, applies object detection algorithms), and publishes the processed frames over MQTT.
+    \item \textbf{Servo and Relay Control:} Servo positions are read and written using dedicated functions. Control loops adjust servo positions based on manual commands or automatic corrections derived from object detection. The relay is triggered with debounce logic to prevent rapid switching.
+    \item \textbf{Green Object Detection:} The server uses OpenCV to detect green objects within the camera feed. When an object is detected, its bounding box is computed, and if conditions are met (e.g., auto mode enabled and crosshair alignment), the relay is triggered.
+    \item \textbf{MQTT Integration:} The server subscribes to command topics and publishes status updates (e.g., \texttt{servo/status}, \texttt{server/tof}). It processes messages to update sensitivity settings and control servo movements.
+\end{itemize}
+
+\section{Installation and Configuration}
+
+\subsection{System Requirements}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Operating Systems:}
+    \begin{itemize}[leftmargin=*, label={*}]
+        \item \textbf{Linux:} Full hardware integration (GPIO, Dynamixel servos).
+        \item \textbf{macOS:} Limited to simulation or basic webcam usage; certain libraries (e.g., Jetson.GPIO) are not applicable.
+    \end{itemize}
+    \item \textbf{Hardware Components:}
+    \begin{itemize}[leftmargin=*, label={*}]
+        \item Camera (USB webcam or OAK-D)
+        \item Dynamixel servos (e.g., U2D2 controller)
+        \item Relay connected to a GPIO pin (for Linux systems)
+        \item (Optional) External input devices
+    \end{itemize}
+\end{itemize}
+
+\subsection{Software Dependencies and Setup}
+\begin{enumerate}[leftmargin=*, label=\arabic*.]
+    \item \textbf{Python 3.x:} Ensure Python 3 is installed.
+    \item \textbf{Required Libraries:} Install the necessary packages using pip:
+    \begin{verbatim}
+pip install opencv-python numpy paho-mqtt pygame netifaces
+    \end{verbatim}
+    Additional packages for hardware integration:
+    \begin{itemize}[leftmargin=*, label={--}]
+        \item On \textbf{Linux:}
+        \begin{verbatim}
+pip install depthai dynamixel_sdk Jetson.GPIO
+        \end{verbatim}
+        \item On \textbf{macOS:} Installation instructions may vary; ensure OpenCV is compiled with AVFoundation support if required.
+    \end{itemize}
+    \item \textbf{MQTT Broker:} Set up an MQTT broker (e.g., Mosquitto). Update the broker IP and port in the code as needed.
+\end{enumerate}
+
+\subsection{Hardware Setup and Wiring}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Camera:} Connect the camera to the system and verify that it is recognized by the operating system.
+    \item \textbf{Dynamixel Servos:} Connect the servos to the U2D2 controller. Ensure the correct wiring and that the servos' IDs match those in the code (e.g., \texttt{DXL1\_ID} for pan and \texttt{DXL2\_ID} for tilt).
+    \item \textbf{Relay and GPIO:} For Linux systems, ensure the GPIO library (e.g., Jetson.GPIO) is correctly configured. The relay pin (e.g., \texttt{RELAY\_PIN = 7}) should be wired to the relay hardware.
+\end{itemize}
+
+\subsection{MQTT Broker Setup}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item Install and run an MQTT broker such as Mosquitto.
+    \item Update the MQTT topics and broker IP addresses in the code:
+    \begin{itemize}[leftmargin=*, label={*}]
+        \item \texttt{MQTT\_BROKER}
+        \item \texttt{MQTT\_PORT}
+        \item All topic names (e.g., \texttt{dpad/commands}, \texttt{camera/feed}, etc.)
+    \end{itemize}
+\end{itemize}
+
+\section{Usage Instructions}
+
+\subsection{Running the Client Application}
+\begin{enumerate}[leftmargin=*, label=\arabic*.]
+    \item \textbf{Start the Application:} Run the client script from the command line:
+    \begin{verbatim}
+python3 turret_client.py
+    \end{verbatim}
+    \item \textbf{User Interface:} An OpenCV window titled ``Turret Client'' appears with:
+    \begin{itemize}[leftmargin=*, label={--}]
+        \item The live camera feed.
+        \item A control panel on the left with an Auto/Manual toggle and speed slider.
+        \item A status message indicating the MQTT connection status.
+    \end{itemize}
+    \item \textbf{Controls:} 
+    \begin{itemize}[leftmargin=*, label={--}]
+        \item \textbf{Keyboard:} Arrow keys or \texttt{W}, \texttt{A}, \texttt{S}, \texttt{D} to adjust pan and tilt; Spacebar to trigger the relay (simulate firing); ESC to exit.
+        \item \textbf{Mouse:} Click on the control panel to toggle modes or adjust speed.
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Running the Server Application}
+\begin{enumerate}[leftmargin=*, label=\arabic*.]
+    \item \textbf{Start the Application:} Run the server script from the command line:
+    \begin{verbatim}
+python3 turret_server.py
+    \end{verbatim}
+    \item \textbf{Hardware Initialization:} The server will attempt to initialize the camera, GPIO (for relay), and Dynamixel servos. Check the console logs for status messages.
+    \item \textbf{Operation Modes:}
+    \begin{itemize}[leftmargin=*, label={--}]
+        \item \textbf{Manual Mode:} Direct commands from the client override servo positions.
+        \item \textbf{Auto Mode:} The system automatically adjusts the turret based on object detection (green objects).
+    \end{itemize}
+    \item \textbf{MQTT and Status Updates:} The server publishes camera frames and servo status updates to MQTT topics periodically.
+\end{enumerate}
+
+\subsection{User Interface and Controls}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Control Panel:} Provides a visual interface for toggling auto/manual mode, adjusting the speed setting with a slider, and displaying MQTT connection status.
+    \item \textbf{Visual Overlays:} The client displays crosshairs and bounding boxes (when a green object is detected) on the camera feed.
+\end{itemize}
+
+\section{Code Structure and Key Functions}
+
+\subsection{Client Code Overview}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{MQTT Callbacks:} 
+    \begin{itemize}[leftmargin=*, label={*}]
+        \item \texttt{on\_connect(client, userdata, flags, reasonCode, properties)}: Handles successful MQTT connection and subscribes to necessary topics.
+        \item \texttt{on\_message(client, userdata, msg)}: Processes incoming messages (camera frames, servo status, etc.).
+    \end{itemize}
+    \item \textbf{Main Loop (\texttt{main\_loop}):} Handles display updates, input events, and publishes control commands.
+    \item \textbf{Input Handling:} Functions such as \texttt{mouse\_callback} and key event handling in the main loop manage user interactions.
+    \item \textbf{UI Rendering:} Functions like \texttt{draw\_control\_panel} and \texttt{draw\_crosshair} create the visual elements in the OpenCV window.
+\end{itemize}
+
+\subsection{Server Code Overview}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Hardware Initialization:}
+    \begin{itemize}[leftmargin=*, label={*}]
+        \item \texttt{initialize\_camera()}: Sets up the camera feed.
+        \item \texttt{find\_dynamixel\_port()} and \texttt{initialize\_servos()}: Detect and initialize Dynamixel servos.
+        \item \texttt{initialize\_home\_position()}: Establishes a reference "home" position for the servos.
+    \end{itemize}
+    \item \textbf{Image Processing and Object Detection:}
+    \begin{itemize}[leftmargin=*, label={*}]
+        \item \texttt{camera\_feed\_thread()}: Captures and processes video frames, performs object detection, and publishes the processed image.
+        \item \texttt{detect\_green\_objects(frame)}: Uses HSV thresholding to detect green objects and compute their bounding boxes.
+    \end{itemize}
+    \item \textbf{Servo and Relay Control:}
+    \begin{itemize}[leftmargin=*, label={*}]
+        \item \texttt{control\_servos()}: Continuously updates servo positions based on either manual inputs or automatic corrections.
+        \item \texttt{write\_servo\_position(dxl\_id, position)}: Sends position commands to the servos with error handling and retries.
+        \item \texttt{trigger\_relay()}: Activates the relay with debounce logic.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Threading and Concurrency}
+Multiple threads are used for:
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Camera Feed Processing:} Capturing, processing, and publishing video frames.
+    \item \textbf{Servo Control Loop:} Continuously reading sensor data and updating servo positions.
+    \item \textbf{MQTT Communication:} Running the MQTT client loop in a background thread.
+\end{itemize}
+Synchronization is managed using locks (e.g., \texttt{frame\_lock}, \texttt{command\_lock}) to ensure thread-safe operations.
+
+\section{Error Handling and Logging}
+
+\subsection{Logging Configuration}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item The code uses Python's built-in \texttt{logging} module for debug and informational messages as well as error reporting with stack traces.
+    \item Logging levels (e.g., DEBUG, INFO, ERROR) are set to provide detailed feedback during operation.
+\end{itemize}
+
+\subsection{Exception and Error Handling}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Try/Except Blocks:} Most functions include try/except blocks to catch exceptions, log errors, and allow the system to continue operating.
+    \item \textbf{Retries:} Functions such as \texttt{write\_servo\_position} and \texttt{read\_servo\_position} implement retry mechanisms to handle transient communication failures.
+\end{itemize}
+
+\subsection{Troubleshooting Tips}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{MQTT Connection Issues:} Check that the broker IP and port are correctly configured and that the broker is running.
+    \item \textbf{Camera Feed Problems:} Verify that the correct camera (or OAK-D device) is connected and accessible.
+    \item \textbf{Servo Communication:} Ensure that the Dynamixel servos are properly wired to the U2D2 controller and that their IDs match those specified in the code.
+    \item \textbf{GPIO and Relay:} For Linux systems, ensure that GPIO libraries (e.g., Jetson.GPIO) are correctly installed and that the relay wiring is correct.
+\end{itemize}
+
+\section{Future Enhancements and Known Limitations}
+
+\subsection{Future Enhancements}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item Additional sensor integration (e.g., depth sensors, TOF sensors).
+    \item Improved UI/UX for the control panel.
+    \item Enhanced error recovery and logging mechanisms.
+    \item Integration with additional input devices (e.g., game controllers).
+\end{itemize}
+
+\subsection{Known Limitations}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item Some hardware-specific features are only available on Linux.
+    \item The camera initialization may require further adjustments based on device models.
+    \item The current auto-mode sensitivity and correction parameters might need fine-tuning for different environments.
+\end{itemize}
+
+\section{Appendices}
+
+\subsection{MQTT Topics and Payload Formats}
+\begin{center}
+\begin{tabular}{|l|l|l|p{3cm}|}
+\hline
+\textbf{Topic} & \textbf{Direction} & \textbf{Payload Format} & \textbf{Description} \\
+\hline
+\texttt{dpad/commands} & Client $\rightarrow$ Server & JSON (e.g., \verb|{"pan_delta": 5}|) & Directional commands \\
+\hline
+\texttt{relay/command} & Client $\rightarrow$ Server & String (e.g., \verb|"off"|) & Relay control \\
+\hline
+\texttt{camera/feed} & Server $\rightarrow$ Client & JPEG bytes & Camera feed \\
+\hline
+\texttt{camera/bbox} & Server $\rightarrow$ Client & JSON & Bounding boxes \\
+\hline
+\texttt{servo/status} & Server $\rightarrow$ Client & JSON & Servo positions \\
+\hline
+\texttt{server/tof} & Server $\rightarrow$ Client & JSON & ToF data \\
+\hline
+\texttt{server/sensitivity} & Both & JSON & Sensitivity \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Library Versions and Dependencies}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Python:} 3.7 or higher
+    \item \textbf{OpenCV:} 4.x
+    \item \textbf{NumPy:} 1.18 or higher
+    \item \textbf{Paho MQTT:} 1.5.x
+    \item \textbf{Pygame:} 2.x
+    \item \textbf{Additional Libraries:} Refer to the installation instructions above for a complete list.
+\end{itemize}
+
+\subsection{References and Resources}
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \href{https://www.eclipse.org/paho/}{Paho MQTT Documentation}
+    \item \href{https://docs.opencv.org/}{OpenCV Documentation}
+    \item \href{https://emanual.robotis.com/docs/en/software/dynamixel/dynamixel_sdk/}{Dynamixel SDK Documentation}
+    \item \href{https://docs.luxonis.com/}{DepthAI Documentation}
+\end{itemize}
+
+\section{Contact and Support}
+For further assistance, bug reports, or feature requests, please contact:
+\begin{itemize}[leftmargin=*, label={--}]
+    \item \textbf{Email:} \texttt{support@yourcompany.com}
+    \item \textbf{Git Repository:} \url{https://github.com/MAVProxyUser/Gelblaster_Wingman}
+    \item \textbf{Issue Tracker:} \url{https://github.com/MAVProxyUser/Gelblaster_Wingman/issues}
+\end{itemize}
+
+\bigskip
+\noindent\textit{End of Documentation}
+
+\end{document}

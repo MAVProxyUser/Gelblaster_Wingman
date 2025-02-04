@@ -1,0 +1,37 @@
+\contentsline {section}{\numberline {1}Introduction}{3}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Overview}{3}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Purpose and Scope}{3}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Target Audience}{3}{subsection.1.3}%
+\contentsline {section}{\numberline {2}System Architecture}{3}{section.2}%
+\contentsline {subsection}{\numberline {2.1}High-Level Overview}{3}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Client and Server Roles}{4}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}MQTT Communication and Topics}{4}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Hardware and Software Dependencies}{5}{subsection.2.4}%
+\contentsline {section}{\numberline {3}Software Components}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Client Application}{5}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Server Application}{6}{subsection.3.2}%
+\contentsline {section}{\numberline {4}Installation and Configuration}{6}{section.4}%
+\contentsline {subsection}{\numberline {4.1}System Requirements}{6}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Software Dependencies and Setup}{6}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Hardware Setup and Wiring}{7}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}MQTT Broker Setup}{7}{subsection.4.4}%
+\contentsline {section}{\numberline {5}Usage Instructions}{7}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Running the Client Application}{7}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Running the Server Application}{8}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}User Interface and Controls}{8}{subsection.5.3}%
+\contentsline {section}{\numberline {6}Code Structure and Key Functions}{8}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Client Code Overview}{8}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Server Code Overview}{9}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Threading and Concurrency}{9}{subsection.6.3}%
+\contentsline {section}{\numberline {7}Error Handling and Logging}{9}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Logging Configuration}{9}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Exception and Error Handling}{10}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Troubleshooting Tips}{10}{subsection.7.3}%
+\contentsline {section}{\numberline {8}Future Enhancements and Known Limitations}{10}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Future Enhancements}{10}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Known Limitations}{10}{subsection.8.2}%
+\contentsline {section}{\numberline {9}Appendices}{10}{section.9}%
+\contentsline {subsection}{\numberline {9.1}MQTT Topics and Payload Formats}{10}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Library Versions and Dependencies}{11}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}References and Resources}{11}{subsection.9.3}%
+\contentsline {section}{\numberline {10}Contact and Support}{11}{section.10}%
