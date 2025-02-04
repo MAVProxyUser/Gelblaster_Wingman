@@ -440,38 +440,32 @@ def on_connect(client, userdata, flags, rc):
 
 def on_command(client, userdata, message):
     try:
-        payload = json.loads(message.payload)
         logging.debug(f"Received message on topic {message.topic}")
         logging.debug(f"Message payload: {message.payload}")
+        
+        if message.topic == MQTT_TOPIC_RELAY:
+            relay_command = message.payload.decode('utf-8')
+            if relay_command == "on":
+                trigger_relay()
+                logging.info("Relay triggered")
+            return
+
+        # For all other commands, expect JSON
+        payload = json.loads(message.payload)
         logging.debug(f"Processing command: {payload}")
 
         with command_lock:
-            # Handle keyboard commands
-            if 'key' in payload:
-                key = payload['key']
-                if key == 'space':
-                    trigger_relay()
-                elif key in ['left', 'right', 'up', 'down', 'a', 'd', 'w', 's']:
-                    # Convert keyboard input to angle changes
-                    if key in ['left', 'a']:
-                        latest_command['pan_angle'] = min(latest_command.get('pan_angle', 0) + 5, PAN_ANGLE_MAX)
-                    elif key in ['right', 'd']:
-                        latest_command['pan_angle'] = max(latest_command.get('pan_angle', 0) - 5, PAN_ANGLE_MIN)
-                    elif key in ['up', 'w']:
-                        latest_command['tilt_angle'] = min(latest_command.get('tilt_angle', 0) + 5, TILT_ANGLE_MAX)
-                    elif key in ['down', 's']:
-                        latest_command['tilt_angle'] = max(latest_command.get('tilt_angle', 0) - 5, TILT_ANGLE_MIN)
-            # Handle joystick/other commands
-            else:
-                if 'pan_delta' in payload:
-                    latest_command['pan_angle'] += payload['pan_delta']
-                if 'tilt_delta' in payload:
-                    latest_command['tilt_angle'] += payload['tilt_delta']
-                if 'auto_mode' in payload:
-                    latest_command['auto_mode'] = payload['auto_mode']
-            
-            # Set command received flag
-            latest_command['command_received'] = True
+            if 'pan_delta' in payload:
+                # Update pan angle directly
+                latest_command['pan_angle'] = latest_command.get('pan_angle', 0) + payload['pan_delta']
+                latest_command['command_received'] = True
+            elif 'tilt_delta' in payload:
+                # Update tilt angle directly
+                latest_command['tilt_angle'] = latest_command.get('tilt_angle', 0) + payload['tilt_delta']
+                latest_command['command_received'] = True
+            elif 'auto_mode' in payload:
+                latest_command['auto_mode'] = payload['auto_mode']
+                latest_command['command_received'] = True
 
         # Debug the final command state
         logging.debug(f"Current command state: {latest_command}")
@@ -673,6 +667,17 @@ def detect_green_objects(frame):
             largest_contour = max(valid_contours, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(largest_contour)
             
+            # Increase bounding box size by 15%
+            increase = 0.15
+            w_increase = int(w * increase)
+            h_increase = int(h * increase)
+            
+            # Adjust x and y to maintain center while increasing size
+            x = max(0, x - w_increase // 2)
+            y = max(0, y - h_increase // 2)
+            w = min(width - x, w + w_increase)
+            h = min(height - y, h + h_increase)
+            
             # Calculate center of bounding box
             target_center_x = x + w/2
             target_center_y = y + h/2
@@ -738,12 +743,6 @@ def camera_feed_thread():
             # Process frame once for green objects and bounding boxes
             processed_frame, target_x, target_y = detect_green_objects(frame.copy())
             
-            # Debug detection results
-            if target_x is not None and target_y is not None:
-                logging.debug(f"Detected green object at x={target_x}, y={target_y}")
-            else:
-                logging.debug("No green object detected in frame")
-            
             # Store detection results
             with detection_lock:
                 latest_detection = {
@@ -751,13 +750,13 @@ def camera_feed_thread():
                     'target_x': target_x,
                     'target_y': target_y
                 }
-                logging.debug(f"Updated latest_detection: {latest_detection}")
             
-            # Encode and publish frame
-            _, img_encoded = cv2.imencode('.jpg', processed_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            # Encode and publish frame with reduced quality for better performance
+            _, img_encoded = cv2.imencode('.jpg', processed_frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
             client.publish(MQTT_TOPIC_CAMERA, img_encoded.tobytes(), qos=0)
             
-            time.sleep(0.01)  # 100Hz max update rate
+            # Add a small delay to control frame rate
+            time.sleep(0.033)  # ~30fps
             
         except Exception as e:
             logging.error(f"Error in camera thread: {e}")

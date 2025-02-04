@@ -550,32 +550,30 @@ def main_loop():
             # Handle keyboard input for manual mode
             key = cv2.waitKey(1) & 0xFF
             if key != 255:  # If a key was pressed
-                print(f"Key pressed: {key}")  # Debug print to see actual key code
+                print(f"Debug - Key code pressed: {key}, Hex: {hex(key)}")  # Enhanced debug print
                 if key == ord(' '):  # Spacebar
                     print("Spacebar pressed - firing")  # Debug print
-                    client.publish(MQTT_TOPIC_RELAY, RELAY_ACTIVATE)
+                    client.publish(MQTT_TOPIC_RELAY, "off")  # Send raw string instead of JSON
                     time.sleep(0.1)  # Brief delay
-                    client.publish(MQTT_TOPIC_RELAY, RELAY_DEACTIVATE)
+                    client.publish(MQTT_TOPIC_RELAY, "on")   # Send raw string instead of JSON
                 elif key == 27:  # ESC key
                     break
-                else:
-                    command = None
-                    if key in [81, ord('a'), 2]:  # Left arrow (81) or 'a' or Left Arrow (2)
-                        print("Left pressed")  # Debug print
-                        command = {'pan_delta': -5}  # Changed from 5 to -5
-                    elif key in [83, ord('d'), 3]:  # Right arrow (83) or 'd' or Right Arrow (3)
-                        print("Right pressed")  # Debug print
-                        command = {'pan_delta': 5}  # Changed from -5 to 5
-                    elif key in [82, ord('w'), 0]:  # Up arrow (82) or 'w' or Up Arrow (0)
-                        print("Up pressed")  # Debug print
-                        command = {'tilt_delta': -5}  # Changed from 5 to -5
-                    elif key in [84, ord('s'), 1]:  # Down arrow (84) or 's' or Down Arrow (1)
-                        print("Down pressed")  # Debug print
-                        command = {'tilt_delta': 5}  # Changed from -5 to 5
-                    
-                    if command:
-                        print(f"Sending command: {command}")  # Debug print
-                        client.publish(MQTT_TOPIC_COMMAND, json.dumps(command))
+                elif key in [ord('a'), ord('A'), 2, 81]:  # Left arrow or 'a'
+                    print("Left pressed")  # Debug print
+                    command = {'pan_delta': -5}
+                    client.publish(MQTT_TOPIC_COMMAND, json.dumps(command))
+                elif key in [ord('d'), ord('D'), 3, 83]:  # Right arrow or 'd'
+                    print("Right pressed")  # Debug print
+                    command = {'pan_delta': 5}
+                    client.publish(MQTT_TOPIC_COMMAND, json.dumps(command))
+                elif key in [ord('w'), ord('W'), 0, 82]:  # Up arrow or 'w'
+                    print("Up pressed")  # Debug print
+                    command = {'tilt_delta': -5}
+                    client.publish(MQTT_TOPIC_COMMAND, json.dumps(command))
+                elif key in [ord('s'), ord('S'), 1, 84]:  # Down arrow or 's'
+                    print("Down pressed")  # Debug print
+                    command = {'tilt_delta': 5}
+                    client.publish(MQTT_TOPIC_COMMAND, json.dumps(command))
 
             # Process mouse events
             cv2.setMouseCallback('Turret Client', mouse_callback)
