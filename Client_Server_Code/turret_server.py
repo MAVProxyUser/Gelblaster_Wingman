@@ -140,18 +140,17 @@ current_speed = 0
 current_auto_mode = False
 
 # Then the rest of the constants
-PAN_ANGLE_MIN = -90.0   # 90 degrees left of center
-PAN_ANGLE_MAX = 90.0    # 90 degrees right of center
-TILT_ANGLE_MIN = -90.0  # 90 degrees down from center
-TILT_ANGLE_MAX = 90.0   # 90 degrees up from center
+PAN_MIN_ANGLE = -540.0  # Triple range for pan (1.5 full rotations)
+PAN_MAX_ANGLE = 540.0   # Triple range for pan (1.5 full rotations)
+TILT_MIN_ANGLE = -45.0  # Keep current tilt angle limits
+TILT_MAX_ANGLE = 45.0   # Keep current tilt angle limits
 
 # Near the top of the file with other constants
-PAN_ANGLE_PER_PIXEL = 0.1  # Degrees per pixel for pan
-TILT_ANGLE_PER_PIXEL = 0.1  # Degrees per pixel for tilt
+PAN_ANGLE_PER_PIXEL = 0.2  # Increased for faster response
+TILT_ANGLE_PER_PIXEL = 0.1  # Keep tilt speed the same
 
 # Servo Control Parameters
-SMOOTHING_FACTOR = 0.3  # Smoothing factor (0.0-1.0)
-MAX_SPEED_DEG_PER_SEC = 360.0  # Doubled again to 360 deg/sec
+MAX_SPEED_DEG_PER_SEC = 720.0  # Increased for faster pan movement
 UPDATE_RATE_HZ = 50  # Control loop update rate
 MAX_SPEED = MAX_SPEED_DEG_PER_SEC / UPDATE_RATE_HZ  # Max speed per update
 MIN_CORRECTION = 0.1  # Minimum correction to apply (degrees)
@@ -162,18 +161,8 @@ ADDR_POSITION_I_GAIN = 82    # Control table address for Position I Gain
 ADDR_POSITION_D_GAIN = 80    # Control table address for Position D Gain
 
 # Add these constants at the top with other constants
-PAN_MIN_ANGLE = -90.0  # Minimum pan angle in degrees 
-PAN_MAX_ANGLE = 90.0   # Maximum pan angle in degrees
-TILT_MIN_ANGLE = -45.0 # Minimum tilt angle in degrees
-TILT_MAX_ANGLE = 45.0  # Maximum tilt angle in degrees
-
-# Add these variables at the top with other globals
-initial_pan_position = None
-initial_tilt_position = None
-
-# Servo position limits
-PAN_MIN_POSITION = 0       # Changed from 1024 to 0 for maximum left movement
-PAN_MAX_POSITION = 4095    # Changed from 3072 to 4095 for maximum right movement
+PAN_MIN_POSITION = -6144  # Allow for negative positions in multi-turn
+PAN_MAX_POSITION = 6144   # Increased for multi-turn (1.5 rotations each way)
 TILT_MIN_POSITION = 200    # Keep current tilt limits
 TILT_MAX_POSITION = 3800   # Keep current tilt limits
 
@@ -190,7 +179,8 @@ def angle_to_servo_position(servo_id, angle):
     if servo_id == DXL1_ID:  # Pan servo
         # Limit pan angle
         angle = min(max(angle, PAN_MIN_ANGLE), PAN_MAX_ANGLE)
-        return int(2048 + (angle * 2048 / 180.0))
+        # Convert angle to position (4095 per 360 degrees)
+        return int(2048 + (angle * 4095 / 360.0))
     else:  # Tilt servo
         # Limit tilt angle
         angle = min(max(angle, TILT_MIN_ANGLE), TILT_MAX_ANGLE)
@@ -401,8 +391,8 @@ def read_servo_position(dxl_id, retries=3):
 def servo_position_to_angle(servo_id, position):
     """Convert servo position to angle in degrees"""
     if servo_id == DXL1_ID:  # Pan servo
-        # Pan servo: 2048 is center (0°), 1024 is -90°, 3072 is +90°
-        return (position - 2048) * (180.0 / 2048)
+        # Pan servo: 2048 is center (0°), multi-turn enabled
+        return (position - 2048) * (360.0 / 4095)
     else:  # Tilt servo
         # Tilt servo: 2048 is 0°, range is -45° to +45°
         return (position - 2048) * (90.0 / 2048)
@@ -463,17 +453,29 @@ def on_command(client, userdata, message):
         logging.debug(f"Processing command: {payload}")
 
         with command_lock:
-            if 'pan_delta' in payload:
-                # Update pan angle directly
-                latest_command['pan_angle'] = latest_command.get('pan_angle', 0) + payload['pan_delta']
-                latest_command['command_received'] = True
-            elif 'tilt_delta' in payload:
-                # Update tilt angle directly
-                latest_command['tilt_angle'] = latest_command.get('tilt_angle', 0) + payload['tilt_delta']
-                latest_command['command_received'] = True
-            elif 'auto_mode' in payload:
-                latest_command['auto_mode'] = payload['auto_mode']
-                latest_command['command_received'] = True
+            # Handle auto mode from both control and command topics
+            if message.topic == MQTT_TOPIC_CONTROL:
+                if 'auto_mode' in payload:
+                    latest_command['auto_mode'] = payload['auto_mode']
+                    latest_command['command_received'] = True
+                    logging.info(f"Auto mode set to {payload['auto_mode']} from control topic")
+                if 'pan_angle' in payload:
+                    latest_command['pan_angle'] = payload['pan_angle']
+                    latest_command['command_received'] = True
+                if 'tilt_angle' in payload:
+                    latest_command['tilt_angle'] = payload['tilt_angle']
+                    latest_command['command_received'] = True
+            else:  # MQTT_TOPIC_COMMAND
+                if 'pan_delta' in payload:
+                    latest_command['pan_angle'] = latest_command.get('pan_angle', 0) + payload['pan_delta']
+                    latest_command['command_received'] = True
+                elif 'tilt_delta' in payload:
+                    latest_command['tilt_angle'] = latest_command.get('tilt_angle', 0) + payload['tilt_delta']
+                    latest_command['command_received'] = True
+                elif 'auto_mode' in payload:
+                    latest_command['auto_mode'] = payload['auto_mode']
+                    latest_command['command_received'] = True
+                    logging.info(f"Auto mode set to {payload['auto_mode']} from command topic")
 
         # Debug the final command state
         logging.debug(f"Current command state: {latest_command}")
@@ -529,7 +531,8 @@ def initialize_camera():
                 
                 # Camera controls
                 camRgb.initialControl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.AUTO)
-                camRgb.initialControl.setAutoExposureEnable()
+                # Set even shorter exposure for LED detection
+                camRgb.initialControl.setManualExposure(1000, 800)  # 1ms exposure to make LEDs pop more
                 camRgb.initialControl.setAutoWhiteBalanceMode(dai.CameraControl.AutoWhiteBalanceMode.AUTO)
 
                 # Linking
@@ -668,13 +671,13 @@ def detect_green_objects(frame):
         frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
         # Multiple HSV ranges to catch different shades of green
-        # Main neon green range
-        NEON_GREEN_LOW = np.array([35, 50, 50])
+        # Main LED green range (for bright LED points)
+        NEON_GREEN_LOW = np.array([35, 20, 200])  # Wider hue range, lower saturation, very high brightness
         NEON_GREEN_HIGH = np.array([85, 255, 255])
         
-        # Bright/washed out green range
-        BRIGHT_GREEN_LOW = np.array([35, 30, 150])
-        BRIGHT_GREEN_HIGH = np.array([85, 120, 255])
+        # Secondary range for slightly dimmer LED points
+        BRIGHT_GREEN_LOW = np.array([35, 20, 150])  # Same wide range, catch slightly dimmer points
+        BRIGHT_GREEN_HIGH = np.array([85, 255, 255])
         
         # Create masks for each range and combine
         mask1 = cv2.inRange(frame_hsv, NEON_GREEN_LOW, NEON_GREEN_HIGH)
@@ -682,17 +685,20 @@ def detect_green_objects(frame):
         mask = cv2.bitwise_or(mask1, mask2)
         
         # Noise reduction based on sensitivity
-        # Higher sensitivity = less noise reduction
-        kernel_size = max(2, int(5 / sensitivity))  # Smaller kernel for higher sensitivity
+        kernel_size = 2  # Keep smallest kernel for maximum detail
         kernel = np.ones((kernel_size, kernel_size), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        
+        # Apply DILATE to connect nearby LED points in the same target
+        mask = cv2.dilate(mask, kernel, iterations=2)  # Increased iterations to better connect LED points
+        
+        # Then apply CLOSE to fill gaps
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         
         # Find contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Adjust minimum area based on sensitivity
-        min_area = int(100 / (sensitivity * 2))  # Higher sensitivity = detect smaller targets
+        # Adjust minimum area based on sensitivity but with a reasonable minimum
+        min_area = max(5, int(20 / (sensitivity * 2)))  # Lower minimum area to catch individual LED points
         valid_contours = [c for c in contours if cv2.contourArea(c) >= min_area]
         
         current_time = time.time()
@@ -715,8 +721,8 @@ def detect_green_objects(frame):
                     center = (x + w/2, y + h/2)
                     dist = ((center[0] - last_center[0])**2 + (center[1] - last_center[1])**2)**0.5
                     
-                    # Only consider contours within reasonable distance
-                    if dist < min(width/4, height/4):  # Max tracking distance
+                    # Use a more reasonable tracking distance since we know target size
+                    if dist < min(width/3, height/3):  # Adjusted tracking distance
                         if dist < min_dist:
                             min_dist = dist
                             best_contour = contour
@@ -724,9 +730,17 @@ def detect_green_objects(frame):
                 if best_contour is not None:
                     largest_contour = best_contour
                 else:
-                    largest_contour = valid_contours[0]
+                    # Only switch to a new target if it's significantly larger or current target is lost
+                    if not hasattr(detect_green_objects, 'last_contour') or \
+                       cv2.contourArea(valid_contours[0]) > cv2.contourArea(detect_green_objects.last_contour) * 1.2:
+                        largest_contour = valid_contours[0]
+                    else:
+                        largest_contour = detect_green_objects.last_contour
             else:
                 largest_contour = valid_contours[0]
+            
+            # Store the current contour for next frame comparison
+            detect_green_objects.last_contour = largest_contour
             
             x, y, w, h = cv2.boundingRect(largest_contour)
             detect_green_objects.last_target = (x, y, w, h)
@@ -856,6 +870,10 @@ def control_servos():
                                     
                                     if target_detected:
                                         current_time = time.time()
+                                        # Store last known good position and time when we have a target
+                                        control_servos.last_known_pan = target_pan_position
+                                        control_servos.last_known_tilt = target_tilt_position
+                                        control_servos.last_detection_time = current_time
                                         
                                         # Even smaller deadzone for precise centering
                                         pan_deadzone = 0.005  # Reduced from 0.01 for tighter centering
@@ -909,9 +927,22 @@ def control_servos():
                                         logging.debug(f"Adjustments - Pan: {pan_adjustment:.2f}°, Tilt: {tilt_adjustment:.2f}°")
                                         last_target_time = current_time
                                     else:
-                                        target_pan_position = initial_pan_position
-                                        target_tilt_position = initial_tilt_position
-                                        time_near_target = 0
+                                        current_time = time.time()
+                                        # If we have a last known position and lost target recently (within 2 seconds)
+                                        if (hasattr(control_servos, 'last_known_pan') and 
+                                            hasattr(control_servos, 'last_detection_time') and
+                                            current_time - control_servos.last_detection_time < 2.0):
+                                            
+                                            # Stay at last known position
+                                            target_pan_position = control_servos.last_known_pan
+                                            target_tilt_position = control_servos.last_known_tilt
+                                            logging.debug("Target lost - maintaining last known position")
+                                        else:
+                                            # Reset to home position after timeout
+                                            target_pan_position = initial_pan_position
+                                            target_tilt_position = initial_tilt_position
+                                            time_near_target = 0
+                                            logging.debug("Target lost timeout - resetting to home position")
                         else:
                             # Manual control logic
                             logging.debug("Manual mode active")
@@ -947,7 +978,10 @@ def write_servo_position(dxl_id, position, retries=3):
     """Write position to servo with retries"""
     for attempt in range(retries):
         try:
+            # Convert position to integer first
+            position = int(position)
             original_position = position
+            
             if dxl_id == DXL1_ID:  # Pan servo valid range 0–4095
                 position = max(PAN_MIN_POSITION, min(position, PAN_MAX_POSITION))
                 logging.debug(f"Pan position before/after limits: {original_position}/{position}")
@@ -958,6 +992,7 @@ def write_servo_position(dxl_id, position, retries=3):
                 logging.debug(f"  Initial position: {initial_tilt_position}")
                 logging.debug(f"  Current limits: TILT_MIN_POSITION={TILT_MIN_POSITION}, TILT_MAX_POSITION={TILT_MAX_POSITION}")
                 logging.debug(f"  Writing position value: {position}")
+            
             # Use 4-byte write for both servos in extended position mode
             dxl_comm_result, dxl_error = packetHandler.write4ByteTxRx(
                 portHandler, dxl_id, ADDR_GOAL_POSITION, position)
@@ -1060,7 +1095,7 @@ if __name__ == "__main__":
         while True:
             # Publish servo status periodically (even if virtual on macOS)
             with command_lock:
-                servo_status = {
+               servo_status = {
                     'pan_angle': latest_command.get('pan_angle', 0.0),  # Use .get() with default values
                     'tilt_angle': latest_command.get('tilt_angle', 0.0)
                 }
