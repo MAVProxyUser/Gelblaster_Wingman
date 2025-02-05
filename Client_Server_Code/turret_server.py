@@ -16,6 +16,7 @@ import subprocess
 import logging
 import depthai as dai
 import traceback
+import math
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -80,9 +81,9 @@ HOME_PAN_ANGLE = 0.0      # Default home position for pan (center)
 HOME_TILT_ANGLE = 0.0     # Default home position for tilt (center)
 
 # Color detection constants
-LOWER_GREEN = np.array([35, 50, 50])    # Lower bound of green in HSV
-UPPER_GREEN = np.array([85, 255, 255])  # Upper bound of green in HSV
-MIN_CONTOUR_AREA = 15                   # Minimum contour area to track
+LOWER_GREEN = np.array([45, 100, 100])    # Increased saturation and value minimums for brighter greens
+UPPER_GREEN = np.array([85, 255, 255])    # Keep upper bound the same
+MIN_CONTOUR_AREA = 15                     # Keep minimum contour area the same
 
 # Dynamixel Configuration
 ADDR_TORQUE_ENABLE = 64               # Control table address for torque enable
@@ -179,6 +180,9 @@ TILT_MAX_POSITION = 3800   # Keep current tilt limits
 # Add at the top with other globals
 previous_error_x = 0
 previous_error_y = 0
+
+# Add with other globals at the top
+sensitivity = 1.0  # Default sensitivity
 
 # Move this function up, before servo_update_thread
 def angle_to_servo_position(servo_id, angle):
@@ -418,7 +422,7 @@ def on_connect(client, userdata, flags, rc):
             (MQTT_TOPIC_CONTROL, 0),
             (MQTT_TOPIC_COMMAND, 0),
             (MQTT_TOPIC_RELAY, 0),
-            ("server/sensitivity", 0)
+            ("server/sensitivity", 0)  # Add subscription for sensitivity adjustments
         ])
         logging.info("Subscribed to control topics")
         
@@ -443,6 +447,10 @@ def on_command(client, userdata, message):
         logging.debug(f"Received message on topic {message.topic}")
         logging.debug(f"Message payload: {message.payload}")
         
+        if message.topic == "server/sensitivity":
+            handle_sensitivity_update(message)
+            return
+            
         if message.topic == MQTT_TOPIC_RELAY:
             relay_command = message.payload.decode('utf-8')
             if relay_command == "on":
@@ -473,6 +481,16 @@ def on_command(client, userdata, message):
     except Exception as e:
         logging.error(f"Error processing command: {e}")
         logging.error(traceback.format_exc())
+
+def handle_sensitivity_update(message):
+    """Handle updates to the sensitivity value"""
+    global sensitivity
+    try:
+        payload = json.loads(message.payload)
+        sensitivity = payload.get('sensitivity', 1.0)
+        print(f"Updated sensitivity to: {sensitivity}", flush=True)
+    except Exception as e:
+        print(f"Error processing sensitivity update: {e}", flush=True)
 
 def on_disconnect(client, userdata, rc):
     """Callback when client disconnects from MQTT broker"""
@@ -638,73 +656,108 @@ def trigger_relay():
             logging.error(f"Error triggering relay: {e}")
 
 def detect_green_objects(frame):
-    """Detect green objects in the frame."""
-    # Store original frame dimensions
+    """Detect green objects in the frame with target persistence."""
+    global last_valid_target, target_lost_time
+    
     height, width = frame.shape[:2]
     frame_center_x = width / 2
     frame_center_y = height / 2
     
     try:
-        # Convert to HSV and create mask
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        # Pre-process to handle bright lighting
+        frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
-        # Create mask for green color
-        mask = cv2.inRange(hsv, LOWER_GREEN, UPPER_GREEN)
+        # Multiple HSV ranges to catch different shades of green
+        # Main neon green range
+        NEON_GREEN_LOW = np.array([35, 50, 50])
+        NEON_GREEN_HIGH = np.array([85, 255, 255])
         
-        # Apply morphological operations
-        kernel = np.ones((5,5), np.uint8)
+        # Bright/washed out green range
+        BRIGHT_GREEN_LOW = np.array([35, 30, 150])
+        BRIGHT_GREEN_HIGH = np.array([85, 120, 255])
+        
+        # Create masks for each range and combine
+        mask1 = cv2.inRange(frame_hsv, NEON_GREEN_LOW, NEON_GREEN_HIGH)
+        mask2 = cv2.inRange(frame_hsv, BRIGHT_GREEN_LOW, BRIGHT_GREEN_HIGH)
+        mask = cv2.bitwise_or(mask1, mask2)
+        
+        # Noise reduction based on sensitivity
+        # Higher sensitivity = less noise reduction
+        kernel_size = max(2, int(5 / sensitivity))  # Smaller kernel for higher sensitivity
+        kernel = np.ones((kernel_size, kernel_size), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         
         # Find contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Filter contours by area
-        valid_contours = [c for c in contours if cv2.contourArea(c) >= MIN_CONTOUR_AREA]
+        # Adjust minimum area based on sensitivity
+        min_area = int(100 / (sensitivity * 2))  # Higher sensitivity = detect smaller targets
+        valid_contours = [c for c in contours if cv2.contourArea(c) >= min_area]
         
-        # Only process the largest contour if we found one
+        current_time = time.time()
+        
         if valid_contours:
-            largest_contour = max(valid_contours, key=cv2.contourArea)
+            # Sort contours by area
+            valid_contours.sort(key=cv2.contourArea, reverse=True)
+            
+            # If we have a previous valid target, try to find the closest matching contour
+            if hasattr(detect_green_objects, 'last_target'):
+                last_x, last_y, last_w, last_h = detect_green_objects.last_target
+                last_center = (last_x + last_w/2, last_y + last_h/2)
+                
+                # Find contour closest to last known position
+                min_dist = float('inf')
+                best_contour = None
+                
+                for contour in valid_contours:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    center = (x + w/2, y + h/2)
+                    dist = ((center[0] - last_center[0])**2 + (center[1] - last_center[1])**2)**0.5
+                    
+                    # Only consider contours within reasonable distance
+                    if dist < min(width/4, height/4):  # Max tracking distance
+                        if dist < min_dist:
+                            min_dist = dist
+                            best_contour = contour
+                
+                if best_contour is not None:
+                    largest_contour = best_contour
+                else:
+                    largest_contour = valid_contours[0]
+            else:
+                largest_contour = valid_contours[0]
+            
             x, y, w, h = cv2.boundingRect(largest_contour)
+            detect_green_objects.last_target = (x, y, w, h)
+            detect_green_objects.last_target_time = current_time
             
-            # Increase bounding box size by 15%
-            increase = 0.15
-            w_increase = int(w * increase)
-            h_increase = int(h * increase)
-            
-            # Adjust x and y to maintain center while increasing size
-            x = max(0, x - w_increase // 2)
-            y = max(0, y - h_increase // 2)
-            w = min(width - x, w + w_increase)
-            h = min(height - y, h + h_increase)
-            
-            # Calculate center of bounding box
+            # Calculate target center
             target_center_x = x + w/2
             target_center_y = y + h/2
             
-            # Calculate error from frame center to target center
-            error_x = (target_center_x - frame_center_x) / (width/2)  # Normalized to [-1, 1]
-            error_y = (target_center_y - frame_center_y) / (height/2)  # Normalized to [-1, 1]
+            # Calculate normalized error based on true center
+            error_x = (target_center_x - frame_center_x) / (width/2)
+            error_y = (target_center_y - frame_center_y) / (height/2)
             
             # Draw bounding box
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
             
-            # Draw frame center crosshair in green
-            cv2.line(frame, (int(frame_center_x-10), int(frame_center_y)), 
-                    (int(frame_center_x+10), int(frame_center_y)), (0, 255, 0), 2)
-            cv2.line(frame, (int(frame_center_x), int(frame_center_y-10)), 
-                    (int(frame_center_x), int(frame_center_y+10)), (0, 255, 0), 2)
-            
-            # Check if crosshair is inside bounding box
+            # Check if frame center is inside bounding box for trigger control
             crosshair_in_box = (x < frame_center_x < (x + w)) and (y < frame_center_y < (y + h))
             
-            # Only trigger relay automatically in auto mode if crosshair is in box
             with command_lock:
                 if crosshair_in_box and latest_command.get('auto_mode', False):
                     trigger_relay()
             
-            logging.debug(f"Target errors: x={error_x:.3f}, y={error_y:.3f}, in_box={crosshair_in_box}")
             return frame, error_x, error_y
+            
+        else:
+            # Clear tracking if target lost for more than 0.5 seconds
+            if (hasattr(detect_green_objects, 'last_target_time') and 
+                current_time - detect_green_objects.last_target_time > 0.5):
+                if hasattr(detect_green_objects, 'last_target'):
+                    delattr(detect_green_objects, 'last_target')
             
         return frame, None, None
         
@@ -743,6 +796,16 @@ def camera_feed_thread():
             # Process frame once for green objects and bounding boxes
             processed_frame, target_x, target_y = detect_green_objects(frame.copy())
             
+            # Draw small green crosshair at frame center
+            height, width = processed_frame.shape[:2]
+            center_x = int(width/2)
+            center_y = int(height/2)
+            crosshair_size = 10  # Small 10-pixel lines
+            cv2.line(processed_frame, (center_x - crosshair_size, center_y), 
+                    (center_x + crosshair_size, center_y), (0, 255, 0), 1)
+            cv2.line(processed_frame, (center_x, center_y - crosshair_size), 
+                    (center_x, center_y + crosshair_size), (0, 255, 0), 1)
+            
             # Store detection results
             with detection_lock:
                 latest_detection = {
@@ -766,6 +829,12 @@ def camera_feed_thread():
 def control_servos():
     try:
         global previous_error_x, previous_error_y
+        daisy_pattern_time = 0
+        daisy_radius = 0.25  # Reduced from 2.0 to 0.25 degrees - much smaller pattern
+        daisy_period = 4.0  # Increased from 2.0 to 4.0 seconds - slower pattern
+        time_near_target = 0
+        last_target_time = time.time()
+        
         while running:
             # Get current positions
             dxl_present_position1 = read_servo_position(DXL1_ID)
@@ -779,41 +848,70 @@ def control_servos():
                                 if latest_detection is None:
                                     target_pan_position = initial_pan_position
                                     target_tilt_position = initial_tilt_position
+                                    time_near_target = 0  # Reset time when no target
                                 else:
                                     error_x = latest_detection.get('target_x')
                                     error_y = latest_detection.get('target_y')
                                     target_detected = error_x is not None and error_y is not None
                                     
                                     if target_detected:
-                                        # Add small deadzone to prevent tiny corrections
-                                        if abs(error_x) > 0.005:  # Keep small deadzone
-                                            # Increase rightward offset and gain
-                                            pan_adjustment = (error_x + 0.015) * sensitivity * 300  # More offset and higher gain
-                                        else:
-                                            pan_adjustment = 0
-                                            
-                                        # Add slight upward offset to compensate for camera alignment
-                                        if abs(error_y) > 0.005:  # Keep small deadzone
-                                            tilt_adjustment = (error_y + 0.02) * sensitivity * 15  # Keep current tilt settings
-                                        else:
-                                            tilt_adjustment = 0
+                                        current_time = time.time()
                                         
-                                        # Keep tight rate limiting
-                                        MAX_ADJUSTMENT = 100  # Keep the smooth motion limit
+                                        # Even smaller deadzone for precise centering
+                                        pan_deadzone = 0.005  # Reduced from 0.01 for tighter centering
+                                        tilt_deadzone = 0.008  # Reduced from 0.015 for tighter centering
+                                        
+                                        # Check if we're close to the target
+                                        if abs(error_x) < pan_deadzone and abs(error_y) < tilt_deadzone:
+                                            if time_near_target == 0:
+                                                time_near_target = current_time
+                                            elif current_time - time_near_target > 1.0:
+                                                # More aggressive fine-tuning multiplier for final centering
+                                                error_x *= 2.0  # Increased from 1.5
+                                                error_y *= 1.5  # Increased from 1.3
+                                        else:
+                                            time_near_target = 0
+                                            
+                                        # Movement adjustments with finer control
+                                        if abs(error_x) > pan_deadzone:
+                                            pan_adjustment = error_x * 180  # Doubled from 90 for faster pan
+                                        else:
+                                            # More precise movements when close
+                                            pan_adjustment = error_x * 90  # Doubled from 45 for faster fine adjustments
+                                            
+                                        if abs(error_y) > tilt_deadzone:
+                                            tilt_adjustment = error_y * 20  # Keep tilt speed
+                                        else:
+                                            # More precise movements when close
+                                            tilt_adjustment = error_y * 10  # Keep tilt fine adjustment speed
+                                        
+                                        # Increased maximum pan adjustment
+                                        max_pan_adjustment = 100  # Doubled from 50
+                                        max_tilt_adjustment = 25  # Kept the same
                                         
                                         pan_delta = int(pan_adjustment * 2048 / 180.0)
-                                        pan_delta = max(min(pan_delta, MAX_ADJUSTMENT), -MAX_ADJUSTMENT)
+                                        pan_delta = max(min(pan_delta, max_pan_adjustment), -max_pan_adjustment)
                                         target_pan_position = dxl_present_position1 + pan_delta
                                         
                                         tilt_delta = int(tilt_adjustment * 2048 / 180.0)
-                                        tilt_delta = max(min(tilt_delta, MAX_ADJUSTMENT), -MAX_ADJUSTMENT)
+                                        tilt_delta = max(min(tilt_delta, max_tilt_adjustment), -max_tilt_adjustment)
+                                        
+                                        # Add movement dampening for tilt
+                                        if hasattr(control_servos, 'last_tilt_delta'):
+                                            # If direction changed, reduce movement
+                                            if (tilt_delta * control_servos.last_tilt_delta) < 0:
+                                                tilt_delta *= 0.5  # Reduce movement by half when changing directions
+                                        control_servos.last_tilt_delta = tilt_delta
+                                        
                                         target_tilt_position = dxl_present_position2 + tilt_delta
                                         
                                         logging.debug(f"Auto mode - Errors: x={error_x:.3f}, y={error_y:.3f}")
                                         logging.debug(f"Adjustments - Pan: {pan_adjustment:.2f}°, Tilt: {tilt_adjustment:.2f}°")
+                                        last_target_time = current_time
                                     else:
                                         target_pan_position = initial_pan_position
                                         target_tilt_position = initial_tilt_position
+                                        time_near_target = 0
                         else:
                             # Manual control logic
                             logging.debug("Manual mode active")
@@ -835,8 +933,6 @@ def control_servos():
                             logging.debug(f"Tilt position limited from {original_tilt} to {target_tilt_position}")
                         logging.debug(f"Writing tilt position: {target_tilt_position}")
                         write_servo_position(DXL2_ID, target_tilt_position)
-                    else:
-                        logging.debug("No command received yet, servos at rest")
 
             time.sleep(0.01)  # Small delay to prevent CPU overload
 
@@ -987,12 +1083,3 @@ if __name__ == "__main__":
         if current_platform == 'Linux':
             GPIO.cleanup()
             portHandler.closePort()
-
-def on_sensitivity_update(client, userdata, message):
-    global sensitivity
-    try:
-        payload = json.loads(message.payload)
-        sensitivity = payload.get('sensitivity', 1.0)
-        print(f"Updated sensitivity to: {sensitivity}", flush=True)
-    except Exception as e:
-        print(f"Error processing sensitivity update: {e}", flush=True)

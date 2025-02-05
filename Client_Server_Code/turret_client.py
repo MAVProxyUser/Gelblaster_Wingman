@@ -73,6 +73,11 @@ BUTTON_HEIGHT = 40
 SLIDER_HEIGHT = 50
 SPACING = 20
 
+# Add with other constants at the top
+SLIDER_WIDTH = 180  # Width of sliders in control panel
+SLIDER_HEIGHT = 30  # Height of slider bars
+BUTTON_SPACING = 15  # Space between UI elements
+
 class Button:
     def __init__(self, x, y, width, height, text, action=None):
         self.x = x
@@ -82,6 +87,58 @@ class Button:
         self.text = text
         self.action = action
         self.active = False
+
+class Slider:
+    def __init__(self, x, y, width, height, min_val, max_val, initial_val, label):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.min_val = min_val
+        self.max_val = max_val
+        self.value = initial_val
+        self.label = label
+        self.dragging = False
+
+    def draw(self, panel):
+        # Draw label
+        cv2.putText(panel, self.label, (self.x, self.y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+        
+        # Draw slider background
+        cv2.rectangle(panel, (self.x, self.y),
+                     (self.x + self.width, self.y + self.height),
+                     (50, 50, 50), -1)
+        
+        # Draw slider position
+        pos = int(self.x + (self.value - self.min_val) * self.width / (self.max_val - self.min_val))
+        cv2.rectangle(panel, (self.x, self.y),
+                     (pos, self.y + self.height),
+                     (0, 200, 0), -1)
+        
+        # Draw value text
+        value_text = f"{self.value}"
+        text_size = cv2.getTextSize(value_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)[0]
+        text_x = self.x + self.width + 5
+        text_y = self.y + self.height // 2 + text_size[1] // 2
+        cv2.putText(panel, value_text, (text_x, text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+
+    def handle_mouse(self, x, y, clicked):
+        if clicked and self.is_inside(x, y):
+            self.dragging = True
+        elif not clicked:
+            self.dragging = False
+            
+        if self.dragging:
+            rel_x = max(0, min(x - self.x, self.width))
+            self.value = int(self.min_val + (rel_x / self.width) * (self.max_val - self.min_val))
+            return True
+        return False
+
+    def is_inside(self, x, y):
+        return (self.x <= x <= self.x + self.width and
+                self.y <= y <= self.y + self.height)
 
 class ControllerState:
     def __init__(self):
@@ -123,6 +180,8 @@ class ControllerState:
         self.speed = 5  # Initialize speed to middle value (5)
         self.pan_speed = 200 * (self.speed / 5.0)  # Scale pan speed based on speed setting
         self.tilt_speed = 200 * (self.speed / 5.0)  # Scale tilt speed based on speed setting
+        self.sensitivity_slider = Slider(PADDING, PADDING + BUTTON_HEIGHT + SPACING, 
+                                      SLIDER_WIDTH, SLIDER_HEIGHT, 1, 20, 10, "Sensitivity")
 
 # At the top of the file with other globals
 latest_frame = None
@@ -232,36 +291,25 @@ def send_mqtt_command(client, controller_state):
     print(f"Sending command: {command}")
     client.publish(MQTT_TOPIC_CONTROL, json.dumps(command))
 
-def draw_control_panel(control_center, controller_state):
-    """Draw a clean, organized control panel with touch-friendly controls"""
-    # Clear panel with dark background
-    control_center.fill(32)  # Dark gray background
+def draw_control_panel(panel, state):
+    """Draw the control panel with buttons and sliders."""
+    # Draw panel background
+    cv2.rectangle(panel, (0, 0), (CONTROL_CENTER_WIDTH, SCREEN_HEIGHT), (30, 30, 30), -1)
     
-    # Panel dimensions
-    PADDING = 10
-    BUTTON_HEIGHT = 40
-    SPACING = 20
-    
-    current_y = PADDING
-
-    # Auto/Manual Toggle Button
-    button_color = (0, 200, 0) if controller_state.auto_mode else (100, 100, 100)
-    cv2.rectangle(control_center, 
-                 (PADDING, current_y), 
-                 (CONTROL_CENTER_WIDTH - PADDING, current_y + BUTTON_HEIGHT),
+    # Draw Auto/Manual Toggle Button
+    button_color = (0, 200, 0) if state.auto_mode else (100, 100, 100)
+    cv2.rectangle(panel, 
+                 (PADDING, PADDING), 
+                 (CONTROL_CENTER_WIDTH - PADDING, PADDING + BUTTON_HEIGHT),
                  button_color, -1)
-    cv2.putText(control_center, 
-                f"{'AUTO' if controller_state.auto_mode else 'MANUAL'}", 
-                (PADDING + 10, current_y + 28),
+    cv2.putText(panel, 
+                f"{'AUTO' if state.auto_mode else 'MANUAL'}", 
+                (PADDING + 10, PADDING + 28),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-
-    # Draw MQTT Status at bottom
-    status_y = SCREEN_HEIGHT - PADDING - 20
-    status_color = (0, 200, 0) if mqtt_connected else (200, 0, 0)
-    cv2.putText(control_center,
-                f"MQTT: {'Connected' if mqtt_connected else 'Disconnected'}", 
-                (PADDING, status_y),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 1)
+    
+    # Draw sensitivity slider below the auto/manual button
+    state.sensitivity_slider.y = PADDING + BUTTON_HEIGHT + SPACING  # Update slider position
+    state.sensitivity_slider.draw(panel)
 
 def handle_speed_click(x, y, controller_state):
     """Handle clicks on the speed slider with improved touch handling"""
@@ -353,93 +401,29 @@ def load_sounds():
         print("Warning: 'laser.wav' not found. Laser sound will be disabled.")
 
 def mouse_callback(event, x, y, flags, param):
-    """Handle mouse events for both touch and mouse input"""
-    global controller_state, mqtt_connected
+    """Handle mouse events for the control panel."""
+    global controller_state, client
     
-    # Only handle left mouse button down or touch events
-    if event == cv2.EVENT_LBUTTONDOWN:
-        # Define constants used in UI layout
-        PADDING = 10
-        BUTTON_HEIGHT = 40
-        SLIDER_HEIGHT = 50
-        SPACING = 20
-        
-        # Only process clicks in control panel area
-        if x < CONTROL_CENTER_WIDTH:
-            # Calculate button area
-            button_top = PADDING
-            button_bottom = button_top + BUTTON_HEIGHT
-            button_left = PADDING
-            button_right = CONTROL_CENTER_WIDTH - PADDING
-            
-            # Auto/Manual Toggle Button
-            if (button_left <= x <= button_right and 
-                button_top <= y <= button_bottom):
+    if x < CONTROL_CENTER_WIDTH:  # Click is in control panel
+        if event == cv2.EVENT_LBUTTONDOWN:
+            # Check Auto/Manual button
+            if (PADDING <= x <= CONTROL_CENTER_WIDTH - PADDING and 
+                PADDING <= y <= PADDING + BUTTON_HEIGHT):
                 controller_state.auto_mode = not controller_state.auto_mode
-                if mqtt_connected:
-                    client.publish(MQTT_TOPIC_CONTROL, json.dumps({
-                        'auto_mode': controller_state.auto_mode
-                    }))
-                return
+                command = {'auto_mode': controller_state.auto_mode}
+                client.publish(MQTT_TOPIC_COMMAND, json.dumps(command))
             
-            # Speed Slider
-            slider_top = button_bottom + SPACING + 25  # Account for label height
-            slider_bottom = slider_top + SLIDER_HEIGHT
+            # Check slider
+            controller_state.sensitivity_slider.handle_mouse(x, y, True)
             
-            # Add extra touch area around slider
-            touch_area_top = slider_top - 10
-            touch_area_bottom = slider_bottom + 10
-            
-            if touch_area_top <= y <= touch_area_bottom:
-                # Calculate new speed based on x position
-                slider_width = CONTROL_CENTER_WIDTH - (2 * PADDING)
-                x_pos = max(PADDING, min(x, CONTROL_CENTER_WIDTH - PADDING))
-                new_speed = 1 + int((x_pos - PADDING) * 9 / slider_width)
-                new_speed = max(1, min(10, new_speed))
+        elif event == cv2.EVENT_MOUSEMOVE and (flags & cv2.EVENT_FLAG_LBUTTON):
+            if controller_state.sensitivity_slider.handle_mouse(x, y, True):
+                sensitivity = controller_state.sensitivity_slider.value / 10.0  # Convert to 0.1-2.0 range
+                command = {'sensitivity': sensitivity}
+                client.publish("server/sensitivity", json.dumps(command))
                 
-                # Only update if speed changed
-                if new_speed != controller_state.speed:
-                    controller_state.speed = new_speed
-                    # Update movement speeds based on new speed setting
-                    controller_state.pan_speed = 200 * (new_speed / 5.0)
-                    controller_state.tilt_speed = 200 * (new_speed / 5.0)
-                    if mqtt_connected:
-                        client.publish(MQTT_TOPIC_CONTROL, json.dumps({
-                            'speed': new_speed,
-                            'pan_speed': controller_state.pan_speed,
-                            'tilt_speed': controller_state.tilt_speed
-                        }))
-    
-    # Handle mouse drag events for slider
-    elif event == cv2.EVENT_MOUSEMOVE and (flags & cv2.EVENT_FLAG_LBUTTON):
-        # Only process if in control panel area
-        if x < CONTROL_CENTER_WIDTH:
-            # Calculate slider area (same as above)
-            button_top = PADDING
-            button_bottom = button_top + BUTTON_HEIGHT
-            slider_top = button_bottom + SPACING + 25
-            slider_bottom = slider_top + SLIDER_HEIGHT
-            touch_area_top = slider_top - 10
-            touch_area_bottom = slider_bottom + 10
-            
-            # Update slider if mouse is being dragged over it
-            if touch_area_top <= y <= touch_area_bottom:
-                slider_width = CONTROL_CENTER_WIDTH - (2 * PADDING)
-                x_pos = max(PADDING, min(x, CONTROL_CENTER_WIDTH - PADDING))
-                new_speed = 1 + int((x_pos - PADDING) * 9 / slider_width)
-                new_speed = max(1, min(10, new_speed))
-                
-                if new_speed != controller_state.speed:
-                    controller_state.speed = new_speed
-                    # Update movement speeds based on new speed setting
-                    controller_state.pan_speed = 200 * (new_speed / 5.0)
-                    controller_state.tilt_speed = 200 * (new_speed / 5.0)
-                    if mqtt_connected:
-                        client.publish(MQTT_TOPIC_CONTROL, json.dumps({
-                            'speed': new_speed,
-                            'pan_speed': controller_state.pan_speed,
-                            'tilt_speed': controller_state.tilt_speed
-                        }))
+        elif event == cv2.EVENT_LBUTTONUP:
+            controller_state.sensitivity_slider.handle_mouse(x, y, False)
 
 def draw_crosshair(frame, x, y, color):
     """Draw a crosshair at the specified position with the given color."""
@@ -495,7 +479,7 @@ def main_loop():
     # Initialize controller state
     controller_state = ControllerState()
     
-    # Create display window
+    # Initialize display window
     cv2.namedWindow('Turret Client', cv2.WINDOW_NORMAL)
     cv2.setMouseCallback('Turret Client', mouse_callback)
     
