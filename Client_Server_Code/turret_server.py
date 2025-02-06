@@ -161,10 +161,10 @@ ADDR_POSITION_I_GAIN = 82    # Control table address for Position I Gain
 ADDR_POSITION_D_GAIN = 80    # Control table address for Position D Gain
 
 # Add these constants at the top with other constants
-PAN_MIN_POSITION = -6144  # Allow for negative positions in multi-turn
-PAN_MAX_POSITION = 6144   # Increased for multi-turn (1.5 rotations each way)
-TILT_MIN_POSITION = 200    # Keep current tilt limits
-TILT_MAX_POSITION = 3800   # Keep current tilt limits
+PAN_MIN_POSITION = 0     # Changed from -6144 to allow full range
+PAN_MAX_POSITION = 4095  # Changed from 6144 to standard range
+TILT_MIN_POSITION = 0    # Changed from 200 to allow full range
+TILT_MAX_POSITION = 4095 # Changed from 3800 to allow full range
 
 # Add at the top with other globals
 previous_error_x = 0
@@ -453,26 +453,23 @@ def on_command(client, userdata, message):
         logging.debug(f"Processing command: {payload}")
 
         with command_lock:
-            # Handle auto mode from both control and command topics
-            if message.topic == MQTT_TOPIC_CONTROL:
-                if 'auto_mode' in payload:
-                    latest_command['auto_mode'] = payload['auto_mode']
-                    latest_command['command_received'] = True
-                    logging.info(f"Auto mode set to {payload['auto_mode']} from control topic")
-                if 'pan_angle' in payload:
-                    latest_command['pan_angle'] = payload['pan_angle']
-                    latest_command['command_received'] = True
-                if 'tilt_angle' in payload:
-                    latest_command['tilt_angle'] = payload['tilt_angle']
-                    latest_command['command_received'] = True
-            else:  # MQTT_TOPIC_COMMAND
+            # Handle keyboard commands
+            if message.topic == MQTT_TOPIC_COMMAND:
                 if 'pan_delta' in payload:
-                    latest_command['pan_angle'] = latest_command.get('pan_angle', 0) + payload['pan_delta']
+                    # Get current pan angle, defaulting to 0 if not set
+                    current_pan = latest_command.get('pan_angle', 0)
+                    # Add the delta and store back
+                    latest_command['pan_angle'] = current_pan + payload['pan_delta']
                     latest_command['command_received'] = True
-                elif 'tilt_delta' in payload:
-                    latest_command['tilt_angle'] = latest_command.get('tilt_angle', 0) + payload['tilt_delta']
+                    logging.info(f"Pan delta {payload['pan_delta']} applied, new angle: {latest_command['pan_angle']}")
+                if 'tilt_delta' in payload:
+                    # Get current tilt angle, defaulting to 0 if not set
+                    current_tilt = latest_command.get('tilt_angle', 0)
+                    # Add the delta and store back
+                    latest_command['tilt_angle'] = current_tilt + payload['tilt_delta']
                     latest_command['command_received'] = True
-                elif 'auto_mode' in payload:
+                    logging.info(f"Tilt delta {payload['tilt_delta']} applied, new angle: {latest_command['tilt_angle']}")
+                if 'auto_mode' in payload:
                     latest_command['auto_mode'] = payload['auto_mode']
                     latest_command['command_received'] = True
                     logging.info(f"Auto mode set to {payload['auto_mode']} from command topic")
@@ -529,9 +526,9 @@ def initialize_camera():
                 camRgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
                 camRgb.setFps(30)
                 
-                # Camera controls
-                camRgb.initialControl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.AUTO)
-                # Set even shorter exposure for LED detection
+                # Camera controls - Critical for LED detection
+                camRgb.initialControl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.OFF)  # Turn off autofocus
+                camRgb.initialControl.setManualFocus(130)  # Set to a reasonable fixed focus distance
                 camRgb.initialControl.setManualExposure(1000, 800)  # 1ms exposure to make LEDs pop more
                 camRgb.initialControl.setAutoWhiteBalanceMode(dai.CameraControl.AutoWhiteBalanceMode.AUTO)
 
@@ -659,120 +656,221 @@ def trigger_relay():
             logging.error(f"Error triggering relay: {e}")
 
 def detect_green_objects(frame):
-    """Detect green objects in the frame with target persistence."""
-    global last_valid_target, target_lost_time
+    """Detect green objects in the frame with target persistence and multi-target tracking."""
+    # Add class variables for target persistence and multi-target tracking
+    if not hasattr(detect_green_objects, 'current_target_center'):
+        detect_green_objects.current_target_center = None
+    if not hasattr(detect_green_objects, 'target_lock_time'):
+        detect_green_objects.target_lock_time = 0
+    if not hasattr(detect_green_objects, 'target_switch_cooldown'):
+        detect_green_objects.target_switch_cooldown = 0
+    if not hasattr(detect_green_objects, 'secondary_targets'):
+        detect_green_objects.secondary_targets = []
+    if not hasattr(detect_green_objects, 'time_near_target'):
+        detect_green_objects.time_near_target = 0
+    if not hasattr(detect_green_objects, 'last_valid_detection_time'):
+        detect_green_objects.last_valid_detection_time = 0
     
     height, width = frame.shape[:2]
     frame_center_x = width / 2
     frame_center_y = height / 2
     
     try:
-        # Pre-process to handle bright lighting
         frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
-        # Multiple HSV ranges to catch different shades of green
-        # Main LED green range (for bright LED points)
-        NEON_GREEN_LOW = np.array([35, 20, 200])  # Wider hue range, lower saturation, very high brightness
+        # Optimized HSV ranges for LED detection
+        NEON_GREEN_LOW = np.array([45, 50, 150])  # Higher value minimum for LED brightness
         NEON_GREEN_HIGH = np.array([85, 255, 255])
         
-        # Secondary range for slightly dimmer LED points
-        BRIGHT_GREEN_LOW = np.array([35, 20, 150])  # Same wide range, catch slightly dimmer points
-        BRIGHT_GREEN_HIGH = np.array([85, 255, 255])
+        # Create mask
+        mask = cv2.inRange(frame_hsv, NEON_GREEN_LOW, NEON_GREEN_HIGH)
         
-        # Create masks for each range and combine
-        mask1 = cv2.inRange(frame_hsv, NEON_GREEN_LOW, NEON_GREEN_HIGH)
-        mask2 = cv2.inRange(frame_hsv, BRIGHT_GREEN_LOW, BRIGHT_GREEN_HIGH)
-        mask = cv2.bitwise_or(mask1, mask2)
+        # Find individual LED points
+        kernel = np.ones((3, 3), np.uint8)
+        led_mask = cv2.dilate(mask, kernel, iterations=1)
         
-        # Noise reduction based on sensitivity
-        kernel_size = 2  # Keep smallest kernel for maximum detail
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
+        # Find LED contours
+        led_contours, _ = cv2.findContours(led_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Apply DILATE to connect nearby LED points in the same target
-        mask = cv2.dilate(mask, kernel, iterations=2)  # Increased iterations to better connect LED points
+        # Filter LED contours by minimum area
+        min_led_area = max(5, int(10 / (sensitivity * 2)))
+        valid_leds = [c for c in led_contours if cv2.contourArea(c) >= min_led_area]
         
-        # Then apply CLOSE to fill gaps
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        logging.debug(f"Found {len(valid_leds)} valid LEDs")
         
-        # Find contours
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Adjust minimum area based on sensitivity but with a reasonable minimum
-        min_area = max(5, int(20 / (sensitivity * 2)))  # Lower minimum area to catch individual LED points
-        valid_contours = [c for c in contours if cv2.contourArea(c) >= min_area]
-        
-        current_time = time.time()
-        
-        if valid_contours:
-            # Sort contours by area
-            valid_contours.sort(key=cv2.contourArea, reverse=True)
+        if len(valid_leds) >= 2:  # Need at least 2 LEDs to form a target
+            # Get centers of all valid LEDs
+            led_centers = []
+            for contour in valid_leds:
+                M = cv2.moments(contour)
+                if M["m00"] != 0:
+                    cx = int(M["m10"] / M["m00"])
+                    cy = int(M["m01"] / M["m00"])
+                    led_centers.append((cx, cy))
             
-            # If we have a previous valid target, try to find the closest matching contour
-            if hasattr(detect_green_objects, 'last_target'):
-                last_x, last_y, last_w, last_h = detect_green_objects.last_target
-                last_center = (last_x + last_w/2, last_y + last_h/2)
-                
-                # Find contour closest to last known position
-                min_dist = float('inf')
-                best_contour = None
-                
-                for contour in valid_contours:
-                    x, y, w, h = cv2.boundingRect(contour)
-                    center = (x + w/2, y + h/2)
-                    dist = ((center[0] - last_center[0])**2 + (center[1] - last_center[1])**2)**0.5
+            # Group LED centers into potential targets
+            targets = []
+            used_centers = set()
+            
+            for i, center1 in enumerate(led_centers):
+                if i in used_centers:
+                    continue
                     
-                    # Use a more reasonable tracking distance since we know target size
-                    if dist < min(width/3, height/3):  # Adjusted tracking distance
-                        if dist < min_dist:
-                            min_dist = dist
-                            best_contour = contour
+                group = [center1]
+                used_centers.add(i)
                 
-                if best_contour is not None:
-                    largest_contour = best_contour
-                else:
-                    # Only switch to a new target if it's significantly larger or current target is lost
-                    if not hasattr(detect_green_objects, 'last_contour') or \
-                       cv2.contourArea(valid_contours[0]) > cv2.contourArea(detect_green_objects.last_contour) * 1.2:
-                        largest_contour = valid_contours[0]
-                    else:
-                        largest_contour = detect_green_objects.last_contour
-            else:
-                largest_contour = valid_contours[0]
+                # Find nearby LEDs within reasonable distance
+                for j, center2 in enumerate(led_centers):
+                    if j in used_centers or j == i:
+                        continue
+                    
+                    # Check if this LED is close to any LED in the group
+                    for group_center in group:
+                        dist = np.sqrt((center2[0] - group_center[0])**2 + 
+                                     (center2[1] - group_center[1])**2)
+                        # Increased distance threshold for more lenient grouping
+                        if dist < 60:  # Increased from 40 to 60 pixels for more lenient grouping
+                            if len(group) < 5:  # Still maintain max of 5 LEDs
+                                group.append(center2)
+                                used_centers.add(j)
+                                break
+                
+                if len(group) == 5:  # When we have 5 LEDs, analyze the pattern
+                    # Calculate group properties
+                    center_x = int(np.mean([c[0] for c in group]))
+                    center_y = int(np.mean([c[1] for c in group]))
+                    
+                    # Check if LEDs form a roughly circular pattern
+                    distances_to_center = [np.sqrt((c[0] - center_x)**2 + (c[1] - center_y)**2) 
+                                         for c in group]
+                    avg_distance = np.mean(distances_to_center)
+                    distance_variance = np.std(distances_to_center)
+                    
+                    # More lenient circularity check
+                    if distance_variance < avg_distance * 0.5:  # Increased from 0.3 to 0.5
+                        # Calculate angles between LEDs to verify spacing
+                        angles = []
+                        for led_pos in group:
+                            dx = led_pos[0] - center_x
+                            dy = led_pos[1] - center_y
+                            angle = math.atan2(dy, dx)
+                            angles.append(angle)
+                        
+                        # Sort angles and calculate differences
+                        angles.sort()
+                        angle_diffs = [(angles[(i+1)%5] - angles[i]) % (2*math.pi) for i in range(5)]
+                        avg_angle_diff = sum(angle_diffs) / 5
+                        angle_variance = sum((diff - avg_angle_diff)**2 for diff in angle_diffs) / 5
+                        
+                        # More lenient angle spacing check
+                        if angle_variance < 0.5:  # Increased from 0.3 to 0.5
+                            targets.append({
+                                'center': (center_x, center_y),
+                                'led_count': len(group),
+                                'spread': max(distances_to_center),
+                                'led_positions': group,
+                                'circularity': distance_variance / avg_distance,
+                                'angle_variance': angle_variance
+                            })
+                            break  # Break after finding a valid target with this starting LED
             
-            # Store the current contour for next frame comparison
-            detect_green_objects.last_contour = largest_contour
+            logging.debug(f"Found {len(targets)} valid targets")
             
-            x, y, w, h = cv2.boundingRect(largest_contour)
-            detect_green_objects.last_target = (x, y, w, h)
-            detect_green_objects.last_target_time = current_time
-            
-            # Calculate target center
-            target_center_x = x + w/2
-            target_center_y = y + h/2
-            
-            # Calculate normalized error based on true center
-            error_x = (target_center_x - frame_center_x) / (width/2)
-            error_y = (target_center_y - frame_center_y) / (height/2)
-            
-            # Draw bounding box
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            
-            # Check if frame center is inside bounding box for trigger control
-            crosshair_in_box = (x < frame_center_x < (x + w)) and (y < frame_center_y < (y + h))
-            
-            with command_lock:
-                if crosshair_in_box and latest_command.get('auto_mode', False):
-                    trigger_relay()
-            
-            return frame, error_x, error_y
-            
+            if targets:
+                current_time = time.time()
+                detect_green_objects.last_valid_detection_time = current_time
+                
+                # Sort targets by LED count (closer to 5) and circularity
+                targets.sort(key=lambda x: (abs(5 - x['led_count']), x['circularity']))
+                
+                # Track primary and secondary targets
+                primary_target = None
+                secondary_targets = []
+                
+                # If we have a current target, try to maintain it
+                if detect_green_objects.current_target_center is not None:
+                    prev_x, prev_y = detect_green_objects.current_target_center
+                    
+                    # Look for current target in new targets
+                    for target in targets:
+                        tx, ty = target['center']
+                        dist = np.sqrt((tx - prev_x)**2 + (ty - prev_y)**2)
+                        
+                        if dist < 100:  # Increased tracking window for better persistence
+                            # Update with less smoothing for more responsive tracking
+                            smooth_factor = 0.3
+                            new_x = int(prev_x * smooth_factor + tx * (1 - smooth_factor))
+                            new_y = int(prev_y * smooth_factor + ty * (1 - smooth_factor))
+                            primary_target = target
+                            primary_target['center'] = (new_x, new_y)
+                            logging.debug(f"Maintaining current target at ({new_x}, {new_y})")
+                            break
+                
+                # If no primary target found or if we don't have one yet
+                if primary_target is None:
+                    # Only switch targets if cooldown expired
+                    if current_time - detect_green_objects.target_switch_cooldown > 0.5:
+                        # Pick the best target (closest to 5 LEDs and most circular)
+                        primary_target = targets[0]
+                        detect_green_objects.target_switch_cooldown = current_time
+                        detect_green_objects.current_target_center = primary_target['center']
+                        logging.debug(f"Switching to new target at {primary_target['center']}")
+                
+                # Update current target and store secondary targets
+                if primary_target is not None:
+                    detect_green_objects.current_target_center = primary_target['center']
+                    
+                    # Store other targets as secondary, sorted by LED count and distance to center
+                    secondary_targets = [t for t in targets if t != primary_target]
+                    if secondary_targets:
+                        for target in secondary_targets:
+                            tx, ty = target['center']
+                            target['distance_to_center'] = np.sqrt((tx - frame_center_x)**2 + 
+                                                                 (ty - frame_center_y)**2)
+                        secondary_targets.sort(key=lambda x: (-x['led_count'], x['distance_to_center']))
+                    detect_green_objects.secondary_targets = secondary_targets
+                    
+                    # Draw all targets with different colors and numbers
+                    for i, target in enumerate(targets):
+                        is_primary = (target == primary_target)
+                        if is_primary:
+                            color = (0, 255, 0)  # Green for primary
+                            thickness = 2
+                            label = "Target 1"
+                        else:
+                            color = (0, 165, 255)  # Orange for secondary
+                            thickness = 2
+                            label = f"Target {i+2}"  # Number the secondary targets
+                        
+                        # Draw circle at center
+                        cv2.circle(frame, target['center'], 20, color, thickness)
+                        
+                        # Draw small circles at each LED position
+                        for led_pos in target['led_positions']:
+                            cv2.circle(frame, led_pos, 5, color, 1)
+                        
+                        # Draw target number and LED count
+                        cv2.putText(frame, f"{label} ({target['led_count']} LEDs)", 
+                                  (target['center'][0] - 40, target['center'][1] - 25),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                    
+                    # Calculate error for primary target
+                    center_x, center_y = primary_target['center']
+                    error_x = (center_x - frame_center_x) / (width/2)
+                    error_y = (center_y - frame_center_y) / (height/2)
+                    
+                    logging.debug(f"Target errors: x={error_x:.3f}, y={error_y:.3f}")
+                    
+                    return frame, error_x, error_y
+        
+        # Reset if no valid targets found
+        current_time = time.time()
+        if current_time - detect_green_objects.last_valid_detection_time > 2.0:
+            detect_green_objects.current_target_center = None
+            detect_green_objects.secondary_targets = []
+            logging.debug("No valid targets found - resetting tracking")
         else:
-            # Clear tracking if target lost for more than 0.5 seconds
-            if (hasattr(detect_green_objects, 'last_target_time') and 
-                current_time - detect_green_objects.last_target_time > 0.5):
-                if hasattr(detect_green_objects, 'last_target'):
-                    delattr(detect_green_objects, 'last_target')
-            
+            logging.debug("No targets in this frame, but maintaining last known position")
         return frame, None, None
         
     except Exception as e:
@@ -843,11 +941,22 @@ def camera_feed_thread():
 def control_servos():
     try:
         global previous_error_x, previous_error_y
-        daisy_pattern_time = 0
-        daisy_radius = 0.25  # Reduced from 2.0 to 0.25 degrees - much smaller pattern
-        daisy_period = 4.0  # Increased from 2.0 to 4.0 seconds - slower pattern
         time_near_target = 0
         last_target_time = time.time()
+        
+        # Initialize target positions
+        target_pan_position = initial_pan_position
+        target_tilt_position = initial_tilt_position
+        
+        # Add variables for tracking error changes
+        if not hasattr(control_servos, 'prev_error_x'):
+            control_servos.prev_error_x = 0
+        if not hasattr(control_servos, 'prev_error_y'):
+            control_servos.prev_error_y = 0
+            
+        # Default frame dimensions (will be updated from actual frame)
+        width = 640  # Default width
+        height = 480  # Default height
         
         while running:
             # Get current positions
@@ -859,110 +968,160 @@ def control_servos():
                     if 'command_received' in latest_command and latest_command['command_received']:
                         if latest_command.get('auto_mode', False):
                             with detection_lock:
-                                if latest_detection is None:
+                                if latest_detection is None or 'frame' not in latest_detection:
                                     target_pan_position = initial_pan_position
                                     target_tilt_position = initial_tilt_position
-                                    time_near_target = 0  # Reset time when no target
+                                    time_near_target = 0
+                                    control_servos.prev_error_x = 0
+                                    control_servos.prev_error_y = 0
                                 else:
                                     error_x = latest_detection.get('target_x')
                                     error_y = latest_detection.get('target_y')
+                                    frame = latest_detection['frame']
+                                    height, width = frame.shape[:2]  # Update frame dimensions
                                     target_detected = error_x is not None and error_y is not None
                                     
                                     if target_detected:
                                         current_time = time.time()
-                                        # Store last known good position and time when we have a target
+                                        
+                                        # Calculate error derivatives (rate of change)
+                                        error_dx = error_x - control_servos.prev_error_x
+                                        error_dy = error_y - control_servos.prev_error_y
+                                        
+                                        # Update previous errors
+                                        control_servos.prev_error_x = error_x
+                                        control_servos.prev_error_y = error_y
+                                        
+                                        # Very small deadzones for precise centering
+                                        pan_deadzone = 0.002  # Further reduced for more precise centering
+                                        tilt_deadzone = 0.002  # Further reduced for more precise centering
+                                        
+                                        # Check if crosshair is inside the target circle (20 pixel radius)
+                                        # Convert normalized errors back to pixels
+                                        error_x_pixels = error_x * (width/2)
+                                        error_y_pixels = error_y * (height/2)
+                                        distance_to_target = np.sqrt(error_x_pixels**2 + error_y_pixels**2)
+                                        
+                                        if distance_to_target < 20:  # If crosshair is inside the 20-pixel circle
+                                            if time_near_target == 0:
+                                                time_near_target = current_time
+                                            elif current_time - time_near_target > 0.05:  # Quick 50ms confirmation
+                                                trigger_relay()  # Fire when inside circle!
+                                                time_near_target = current_time + 0.1  # Small cooldown after shooting
+                                        else:
+                                            time_near_target = 0
+                                        
+                                        # Adaptive speed and damping based on error magnitude
+                                        if abs(error_x) > pan_deadzone:
+                                            # Base speed calculation with adaptive speeds
+                                            if abs(error_x) > 0.3:  # Far from target
+                                                base_speed = 800
+                                                damping_factor = 0.3  # Less damping when far
+                                            elif abs(error_x) > 0.1:  # Medium distance
+                                                base_speed = 400
+                                                damping_factor = 0.5  # More damping as we get closer
+                                            else:  # Close to target
+                                                base_speed = 200
+                                                damping_factor = 0.7  # Heavy damping for fine control
+                                            
+                                            # Apply speed based on error with adaptive damping
+                                            pan_adjustment = error_x * base_speed
+                                            damping = -error_dx * 400  # Increased base damping
+                                            
+                                            # Apply proportional damping
+                                            pan_adjustment = pan_adjustment * (1 - damping_factor) + damping * damping_factor
+                                        else:
+                                            pan_adjustment = 0
+                                            
+                                        # Similar approach for tilt with reduced speeds
+                                        if abs(error_y) > tilt_deadzone:
+                                            if abs(error_y) > 0.3:  # Far from target
+                                                base_speed = 120
+                                                damping_factor = 0.3
+                                            elif abs(error_y) > 0.1:  # Medium distance
+                                                base_speed = 60
+                                                damping_factor = 0.5
+                                            else:  # Close to target
+                                                base_speed = 30
+                                                damping_factor = 0.7
+                                            
+                                            tilt_adjustment = error_y * base_speed
+                                            damping = -error_dy * 100  # Increased tilt damping
+                                            
+                                            # Apply proportional damping
+                                            tilt_adjustment = tilt_adjustment * (1 - damping_factor) + damping * damping_factor
+                                        else:
+                                            tilt_adjustment = 0
+                                        
+                                        # Convert adjustments to servo positions with reduced max adjustments
+                                        pan_delta = int(pan_adjustment * 11.377)  # 4095/360 ≈ 11.377 steps per degree
+                                        max_pan_adjustment = 300  # Reduced from 400
+                                        pan_delta = max(min(pan_delta, max_pan_adjustment), -max_pan_adjustment)
+                                        
+                                        tilt_delta = int(tilt_adjustment * 22.75)  # 4095/180 ≈ 22.75 steps per degree
+                                        max_tilt_adjustment = 50  # Reduced from 80
+                                        tilt_delta = max(min(tilt_delta, max_tilt_adjustment), -max_tilt_adjustment)
+                                        
+                                        # Calculate target positions with adaptive smoothing
+                                        raw_target_pan_position = dxl_present_position1 + pan_delta
+                                        raw_target_tilt_position = dxl_present_position2 + tilt_delta
+                                        
+                                        # More smoothing when close to target
+                                        smooth_factor = 0.3 + (0.4 * (1 - min(1.0, max(abs(error_x), abs(error_y)) / 0.3)))
+                                        target_pan_position = int(dxl_present_position1 * smooth_factor + raw_target_pan_position * (1 - smooth_factor))
+                                        target_tilt_position = int(dxl_present_position2 * smooth_factor + raw_target_tilt_position * (1 - smooth_factor))
+                                        
+                                        # Minimal movement threshold
+                                        min_movement = 1  # Keep fine control
+                                        if abs(target_pan_position - dxl_present_position1) < min_movement:
+                                            target_pan_position = dxl_present_position1
+                                        if abs(target_tilt_position - dxl_present_position2) < min_movement:
+                                            target_tilt_position = dxl_present_position2
+                                        
+                                        # Store last known good position
                                         control_servos.last_known_pan = target_pan_position
                                         control_servos.last_known_tilt = target_tilt_position
                                         control_servos.last_detection_time = current_time
                                         
-                                        # Even smaller deadzone for precise centering
-                                        pan_deadzone = 0.005  # Reduced from 0.01 for tighter centering
-                                        tilt_deadzone = 0.008  # Reduced from 0.015 for tighter centering
-                                        
-                                        # Check if we're close to the target
-                                        if abs(error_x) < pan_deadzone and abs(error_y) < tilt_deadzone:
-                                            if time_near_target == 0:
-                                                time_near_target = current_time
-                                            elif current_time - time_near_target > 1.0:
-                                                # More aggressive fine-tuning multiplier for final centering
-                                                error_x *= 2.0  # Increased from 1.5
-                                                error_y *= 1.5  # Increased from 1.3
-                                        else:
-                                            time_near_target = 0
-                                            
-                                        # Movement adjustments with finer control
-                                        if abs(error_x) > pan_deadzone:
-                                            pan_adjustment = error_x * 180  # Doubled from 90 for faster pan
-                                        else:
-                                            # More precise movements when close
-                                            pan_adjustment = error_x * 90  # Doubled from 45 for faster fine adjustments
-                                            
-                                        if abs(error_y) > tilt_deadzone:
-                                            tilt_adjustment = error_y * 20  # Keep tilt speed
-                                        else:
-                                            # More precise movements when close
-                                            tilt_adjustment = error_y * 10  # Keep tilt fine adjustment speed
-                                        
-                                        # Increased maximum pan adjustment
-                                        max_pan_adjustment = 100  # Doubled from 50
-                                        max_tilt_adjustment = 25  # Kept the same
-                                        
-                                        pan_delta = int(pan_adjustment * 2048 / 180.0)
-                                        pan_delta = max(min(pan_delta, max_pan_adjustment), -max_pan_adjustment)
-                                        target_pan_position = dxl_present_position1 + pan_delta
-                                        
-                                        tilt_delta = int(tilt_adjustment * 2048 / 180.0)
-                                        tilt_delta = max(min(tilt_delta, max_tilt_adjustment), -max_tilt_adjustment)
-                                        
-                                        # Add movement dampening for tilt
-                                        if hasattr(control_servos, 'last_tilt_delta'):
-                                            # If direction changed, reduce movement
-                                            if (tilt_delta * control_servos.last_tilt_delta) < 0:
-                                                tilt_delta *= 0.5  # Reduce movement by half when changing directions
-                                        control_servos.last_tilt_delta = tilt_delta
-                                        
-                                        target_tilt_position = dxl_present_position2 + tilt_delta
-                                        
-                                        logging.debug(f"Auto mode - Errors: x={error_x:.3f}, y={error_y:.3f}")
-                                        logging.debug(f"Adjustments - Pan: {pan_adjustment:.2f}°, Tilt: {tilt_adjustment:.2f}°")
+                                        logging.info(f"Auto mode - Errors: x={error_x:.3f}, y={error_y:.3f}")
+                                        logging.info(f"Error derivatives: dx={error_dx:.3f}, dy={error_dy:.3f}")
+                                        logging.info(f"Adjustments - Pan: {pan_adjustment:.2f}°, Tilt: {tilt_adjustment:.2f}°")
+                                        logging.info(f"Target positions - Pan: {target_pan_position}, Tilt: {target_tilt_position}")
                                         last_target_time = current_time
                                     else:
                                         current_time = time.time()
-                                        # If we have a last known position and lost target recently (within 2 seconds)
                                         if (hasattr(control_servos, 'last_known_pan') and 
                                             hasattr(control_servos, 'last_detection_time') and
                                             current_time - control_servos.last_detection_time < 2.0):
-                                            
-                                            # Stay at last known position
                                             target_pan_position = control_servos.last_known_pan
                                             target_tilt_position = control_servos.last_known_tilt
                                             logging.debug("Target lost - maintaining last known position")
                                         else:
-                                            # Reset to home position after timeout
                                             target_pan_position = initial_pan_position
                                             target_tilt_position = initial_tilt_position
                                             time_near_target = 0
                                             logging.debug("Target lost timeout - resetting to home position")
                         else:
-                            # Manual control logic
-                            logging.debug("Manual mode active")
-                            target_pan_position = initial_pan_position + int(latest_command.get('pan_angle', 0) * 2048 / 180.0)
-                            target_tilt_position = initial_tilt_position + int(latest_command.get('tilt_angle', 0) * 2048 / 180.0)
-                            logging.debug(f"Manual mode - Target angles: Pan={latest_command.get('pan_angle', 0)}, Tilt={latest_command.get('tilt_angle', 0)}")
+                            # Manual control logic remains unchanged
+                            pan_angle = latest_command.get('pan_angle', 0)
+                            tilt_angle = latest_command.get('tilt_angle', 0)
+                            
+                            # Convert angles to servo positions with proper scaling
+                            pan_steps_per_degree = 11.377  # 4095/360 ≈ 11.377
+                            tilt_steps_per_degree = 22.75  # 4095/180 ≈ 22.75
+                            
+                            target_pan_position = initial_pan_position + int(pan_angle * pan_steps_per_degree)
+                            target_tilt_position = initial_tilt_position + int(tilt_angle * tilt_steps_per_degree)
+                            
+                            logging.info(f"Manual mode - Target angles: Pan={pan_angle:.2f}, Tilt={tilt_angle:.2f}")
+                            logging.info(f"Manual mode - Target positions: Pan={target_pan_position}, Tilt={target_tilt_position}")
 
-                        # Apply position limits with more logging
-                        original_pan = target_pan_position
+                        # Apply position limits
                         target_pan_position = max(PAN_MIN_POSITION, min(PAN_MAX_POSITION, target_pan_position))
-                        if original_pan != target_pan_position:
-                            logging.debug(f"Pan position limited from {original_pan} to {target_pan_position}")
-                        logging.debug(f"Writing pan position: {target_pan_position}")
-                        write_servo_position(DXL1_ID, target_pan_position)
-
-                        original_tilt = target_tilt_position
                         target_tilt_position = max(TILT_MIN_POSITION, min(TILT_MAX_POSITION, target_tilt_position))
-                        if original_tilt != target_tilt_position:
-                            logging.debug(f"Tilt position limited from {original_tilt} to {target_tilt_position}")
-                        logging.debug(f"Writing tilt position: {target_tilt_position}")
+                        
+                        # Write positions
+                        write_servo_position(DXL1_ID, target_pan_position)
                         write_servo_position(DXL2_ID, target_tilt_position)
 
             time.sleep(0.01)  # Small delay to prevent CPU overload
@@ -970,9 +1129,8 @@ def control_servos():
     except Exception as e:
         logging.error(f"Error in control loop: {e}")
         logging.error(traceback.format_exc())
-        # Restart the control loop if it crashes
         time.sleep(1)
-        control_servos()
+        control_servos()  # Restart the control loop if it crashes
 
 def write_servo_position(dxl_id, position, retries=3):
     """Write position to servo with retries"""

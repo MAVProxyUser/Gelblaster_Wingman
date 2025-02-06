@@ -572,7 +572,7 @@ def main_loop():
                 client.publish(MQTT_TOPIC_CONTROL, json.dumps(command))
                 logging.info(f"Published command: {command}")
                 controller_state.auto_mode_changed = False
-                controller_state.manual_control_active = False
+                controimage.pngller_state.manual_control_active = False
             
             time.sleep(0.05)  # 20Hz update rate
 
