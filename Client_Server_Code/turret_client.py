@@ -15,6 +15,8 @@ import math
 import platform
 import traceback
 import logging
+import tkinter as tk
+from tkinter import ttk
 
 # Determine the current platform
 CURRENT_PLATFORM = platform.system()
@@ -154,6 +156,7 @@ class ControllerState:
         self.pan_aggr = 8.0
         self.tilt_aggr = 4.0
         self.auto_mode = False
+        self.selected_color = 'green'  # Default color selection
         self.pan_angle = None  # Initialize to None, will be set from servo status
         self.tilt_angle = None  # Initialize to None, will be set from servo status
         self.trigger_pressed = False
@@ -310,6 +313,30 @@ def draw_control_panel(panel, state):
     # Draw sensitivity slider below the auto/manual button
     state.sensitivity_slider.y = PADDING + BUTTON_HEIGHT + SPACING  # Update slider position
     state.sensitivity_slider.draw(panel)
+    
+    # Draw color selection buttons below sensitivity slider
+    color_y = state.sensitivity_slider.y + SLIDER_HEIGHT + SPACING
+    colors = ['green', 'purple', 'yellow']
+    color_displays = [(0, 255, 0), (255, 0, 255), (0, 255, 255)]  # BGR colors for display
+    
+    cv2.putText(panel, "Target Color:", 
+                (PADDING, color_y + 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+    
+    for i, (color_name, display_color) in enumerate(zip(colors, color_displays)):
+        button_y = color_y + 40 + (i * (BUTTON_HEIGHT + 5))
+        # Draw color button background
+        button_color = (100, 100, 100)
+        if hasattr(state, 'selected_color') and state.selected_color == color_name:
+            button_color = display_color
+        cv2.rectangle(panel,
+                     (PADDING, button_y),
+                     (CONTROL_CENTER_WIDTH - PADDING, button_y + BUTTON_HEIGHT - 10),
+                     button_color, -1)
+        # Draw color name
+        cv2.putText(panel, color_name.upper(),
+                    (PADDING + 10, button_y + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
 def handle_speed_click(x, y, controller_state):
     """Handle clicks on the speed slider with improved touch handling"""
@@ -416,6 +443,18 @@ def mouse_callback(event, x, y, flags, param):
             # Check slider
             controller_state.sensitivity_slider.handle_mouse(x, y, True)
             
+            # Check color selection buttons
+            color_y = controller_state.sensitivity_slider.y + SLIDER_HEIGHT + SPACING
+            colors = ['green', 'purple', 'yellow']
+            for i, color in enumerate(colors):
+                button_y = color_y + 40 + (i * (BUTTON_HEIGHT + 5))
+                if (PADDING <= x <= CONTROL_CENTER_WIDTH - PADDING and
+                    button_y <= y <= button_y + BUTTON_HEIGHT - 10):
+                    controller_state.selected_color = color
+                    command = {'selected_color': color}
+                    client.publish(MQTT_TOPIC_COMMAND, json.dumps(command))
+                    break
+            
         elif event == cv2.EVENT_MOUSEMOVE and (flags & cv2.EVENT_FLAG_LBUTTON):
             if controller_state.sensitivity_slider.handle_mouse(x, y, True):
                 sensitivity = controller_state.sensitivity_slider.value / 10.0  # Convert to 0.1-2.0 range
@@ -459,6 +498,110 @@ def enable_auto_mode():
         'auto_mode': True
     }
     client.publish(MQTT_TOPIC_COMMAND, json.dumps(command))
+
+def create_control_window():
+    global control_window, auto_button, color_var
+    
+    control_window = tk.Toplevel()
+    control_window.title("Turret Controls")
+    control_window.geometry("300x400")  # Made taller to accommodate color selection
+    
+    # Mode control frame
+    mode_frame = ttk.LabelFrame(control_window, text="Mode Control", padding="5")
+    mode_frame.pack(fill="x", padx=5, pady=5)
+    
+    auto_button = ttk.Button(mode_frame, text="Auto Mode: OFF", command=toggle_auto_mode)
+    auto_button.pack(fill="x", padx=5, pady=5)
+    
+    # Color selection frame
+    color_frame = ttk.LabelFrame(control_window, text="Target Color", padding="5")
+    color_frame.pack(fill="x", padx=5, pady=5)
+    
+    color_var = tk.StringVar(value="green")  # Default to green
+    
+    def on_color_change():
+        selected_color = color_var.get()
+        client.publish(MQTT_TOPIC_COMMAND, json.dumps({"selected_color": selected_color}))
+    
+    ttk.Radiobutton(color_frame, text="Green", variable=color_var, 
+                   value="green", command=on_color_change).pack(anchor="w", padx=5)
+    ttk.Radiobutton(color_frame, text="Purple", variable=color_var, 
+                   value="purple", command=on_color_change).pack(anchor="w", padx=5)
+    ttk.Radiobutton(color_frame, text="Yellow", variable=color_var, 
+                   value="yellow", command=on_color_change).pack(anchor="w", padx=5)
+    
+    # Manual control frame
+    manual_frame = ttk.LabelFrame(control_window, text="Manual Control", padding="5")
+    manual_frame.pack(fill="x", padx=5, pady=5)
+    
+    # D-pad style controls
+    dpad_frame = ttk.Frame(manual_frame)
+    dpad_frame.pack(pady=5)
+    
+    # Up button
+    up_button = ttk.Button(dpad_frame, text="↑", width=3)
+    up_button.grid(row=0, column=1, pady=2)
+    up_button.bind('<Button-1>', lambda e: send_command({"tilt_delta": -5}))
+    up_button.bind('<ButtonRelease-1>', lambda e: None)
+    
+    # Left button
+    left_button = ttk.Button(dpad_frame, text="←", width=3)
+    left_button.grid(row=1, column=0, padx=2)
+    left_button.bind('<Button-1>', lambda e: send_command({"pan_delta": -5}))
+    left_button.bind('<ButtonRelease-1>', lambda e: None)
+    
+    # Right button
+    right_button = ttk.Button(dpad_frame, text="→", width=3)
+    right_button.grid(row=1, column=2, padx=2)
+    right_button.bind('<Button-1>', lambda e: send_command({"pan_delta": 5}))
+    right_button.bind('<ButtonRelease-1>', lambda e: None)
+    
+    # Down button
+    down_button = ttk.Button(dpad_frame, text="↓", width=3)
+    down_button.grid(row=2, column=1, pady=2)
+    down_button.bind('<Button-1>', lambda e: send_command({"tilt_delta": 5}))
+    down_button.bind('<ButtonRelease-1>', lambda e: None)
+    
+    # Fire button
+    fire_button = ttk.Button(manual_frame, text="FIRE", style="Accent.TButton")
+    fire_button.pack(fill="x", padx=5, pady=10)
+    fire_button.bind('<Button-1>', lambda e: client.publish(MQTT_TOPIC_RELAY, "on"))
+    
+    # Bind keyboard controls
+    control_window.bind('<KeyPress>', handle_keypress)
+    control_window.bind('<KeyRelease>', handle_keyrelease)
+    
+    # Keep window on top
+    control_window.attributes('-topmost', True)
+    
+    return control_window
+
+def handle_keypress(event):
+    if event.keysym not in pressed_keys:
+        pressed_keys.add(event.keysym)
+        if event.keysym == 'w':
+            send_command({"tilt_delta": -5})
+        elif event.keysym == 's':
+            send_command({"tilt_delta": 5})
+        elif event.keysym == 'a':
+            send_command({"pan_delta": -5})
+        elif event.keysym == 'd':
+            send_command({"pan_delta": 5})
+        elif event.keysym == 'space':
+            client.publish(MQTT_TOPIC_RELAY, "on")
+        elif event.keysym == '1':
+            color_var.set("green")
+            client.publish(MQTT_TOPIC_COMMAND, json.dumps({"selected_color": "green"}))
+        elif event.keysym == '2':
+            color_var.set("purple")
+            client.publish(MQTT_TOPIC_COMMAND, json.dumps({"selected_color": "purple"}))
+        elif event.keysym == '3':
+            color_var.set("yellow")
+            client.publish(MQTT_TOPIC_COMMAND, json.dumps({"selected_color": "yellow"}))
+
+def handle_keyrelease(event):
+    if event.keysym in pressed_keys:
+        pressed_keys.remove(event.keysym)
 
 def main_loop():
     global controller_state, mqtt_connected, client
@@ -572,7 +715,7 @@ def main_loop():
                 client.publish(MQTT_TOPIC_CONTROL, json.dumps(command))
                 logging.info(f"Published command: {command}")
                 controller_state.auto_mode_changed = False
-                controimage.pngller_state.manual_control_active = False
+                controller_state.manual_control_active = False
             
             time.sleep(0.05)  # 20Hz update rate
 

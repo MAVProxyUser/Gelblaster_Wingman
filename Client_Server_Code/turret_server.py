@@ -81,9 +81,26 @@ HOME_PAN_ANGLE = 0.0      # Default home position for pan (center)
 HOME_TILT_ANGLE = 0.0     # Default home position for tilt (center)
 
 # Color detection constants
-LOWER_GREEN = np.array([45, 100, 100])    # Increased saturation and value minimums for brighter greens
-UPPER_GREEN = np.array([85, 255, 255])    # Keep upper bound the same
-MIN_CONTOUR_AREA = 15                     # Keep minimum contour area the same
+# Green LED detection
+GREEN_LOW = np.array([45, 50, 150])    # Higher value minimum for LED brightness
+GREEN_HIGH = np.array([85, 255, 255])   # Keep upper bound the same
+
+# Purple LED detection
+PURPLE_LOW = np.array([130, 50, 150])   # Purple/Violet hue range with same brightness requirements
+PURPLE_HIGH = np.array([170, 255, 255])
+
+# Yellow LED detection - Adjusted for very bright, whitish-yellow LEDs
+YELLOW_LOW = np.array([20, 10, 220])    # Very low saturation minimum, very high brightness requirement
+YELLOW_HIGH = np.array([40, 150, 255])  # Limited maximum saturation to catch whitish yellows
+
+# Add color selection to latest_command structure
+latest_command = {
+    'auto_mode': False,
+    'pan_angle': HOME_PAN_ANGLE,
+    'tilt_angle': HOME_TILT_ANGLE,
+    'command_received': False,
+    'selected_color': 'green'  # Default to green
+}
 
 # Dynamixel Configuration
 ADDR_TORQUE_ENABLE = 64               # Control table address for torque enable
@@ -114,12 +131,6 @@ frame_lock = threading.Lock()
 detection_lock = threading.Lock()
 
 # Rest of the global variables
-latest_command = {
-    'auto_mode': False,
-    'pan_angle': HOME_PAN_ANGLE,
-    'tilt_angle': HOME_TILT_ANGLE,
-    'command_received': False
-}
 latest_frame = None
 latest_detection = None
 running = True
@@ -426,7 +437,8 @@ def on_connect(client, userdata, flags, rc):
             'auto_mode': False,
             'pan_angle': HOME_PAN_ANGLE,
             'tilt_angle': HOME_TILT_ANGLE,
-            'command_received': False
+            'command_received': False,
+            'selected_color': 'green'  # Default to green
         }
         
         # Set client_connected flag
@@ -459,20 +471,19 @@ def on_command(client, userdata, message):
         with command_lock:
             # Handle keyboard commands
             if message.topic == MQTT_TOPIC_COMMAND:
+                if 'selected_color' in payload:
+                    latest_command['selected_color'] = payload['selected_color']
+                    logging.info(f"Color selection changed to: {payload['selected_color']}")
                 if 'pan_delta' in payload:
-                    # Get current pan angle, defaulting to 0 if not set
                     current_pan = latest_command.get('pan_angle', 0)
-                    # Add the delta and store back
                     latest_command['pan_angle'] = current_pan + payload['pan_delta']
                     latest_command['command_received'] = True
                     logging.info(f"Pan delta {payload['pan_delta']} applied, new angle: {latest_command['pan_angle']}")
                 if 'tilt_delta' in payload:
-                    # Get current tilt angle, defaulting to 0 if not set
                     current_tilt = latest_command.get('tilt_angle', 0)
-                    # Add the delta (reduced to 1/8) and store back
-                    latest_command['tilt_angle'] = current_tilt + (payload['tilt_delta'] * 0.125)  # Reduced to 1/8
+                    latest_command['tilt_angle'] = current_tilt + (payload['tilt_delta'] * 0.0625)  # Reduced to 1/16
                     latest_command['command_received'] = True
-                    logging.info(f"Tilt delta {payload['tilt_delta'] * 0.125} applied, new angle: {latest_command['tilt_angle']}")
+                    logging.info(f"Tilt delta {payload['tilt_delta'] * 0.0625} applied, new angle: {latest_command['tilt_angle']}")
                 if 'auto_mode' in payload:
                     latest_command['auto_mode'] = payload['auto_mode']
                     latest_command['command_received'] = True
@@ -617,7 +628,8 @@ def initialize_home_position():
                 latest_command = {
                     'pan_angle': HOME_PAN_ANGLE,
                     'tilt_angle': HOME_TILT_ANGLE,
-                    'auto_mode': False
+                    'auto_mode': False,
+                    'selected_color': 'green'  # Default to green
                 }
                 
                 # Also initialize current angles
@@ -659,21 +671,21 @@ def trigger_relay():
         except Exception as e:
             logging.error(f"Error triggering relay: {e}")
 
-def detect_green_objects(frame):
-    """Detect green objects in the frame with target persistence and multi-target tracking."""
+def detect_targets(frame, color='green'):
+    """Detect LED targets of specified color in the frame with target persistence and multi-target tracking."""
     # Add class variables for target persistence and multi-target tracking
-    if not hasattr(detect_green_objects, 'current_target_center'):
-        detect_green_objects.current_target_center = None
-    if not hasattr(detect_green_objects, 'target_lock_time'):
-        detect_green_objects.target_lock_time = 0
-    if not hasattr(detect_green_objects, 'target_switch_cooldown'):
-        detect_green_objects.target_switch_cooldown = 0
-    if not hasattr(detect_green_objects, 'secondary_targets'):
-        detect_green_objects.secondary_targets = []
-    if not hasattr(detect_green_objects, 'time_near_target'):
-        detect_green_objects.time_near_target = 0
-    if not hasattr(detect_green_objects, 'last_valid_detection_time'):
-        detect_green_objects.last_valid_detection_time = 0
+    if not hasattr(detect_targets, 'current_target_center'):
+        detect_targets.current_target_center = None
+    if not hasattr(detect_targets, 'target_lock_time'):
+        detect_targets.target_lock_time = 0
+    if not hasattr(detect_targets, 'target_switch_cooldown'):
+        detect_targets.target_switch_cooldown = 0
+    if not hasattr(detect_targets, 'secondary_targets'):
+        detect_targets.secondary_targets = []
+    if not hasattr(detect_targets, 'time_near_target'):
+        detect_targets.time_near_target = 0
+    if not hasattr(detect_targets, 'last_valid_detection_time'):
+        detect_targets.last_valid_detection_time = 0
     
     height, width = frame.shape[:2]
     frame_center_x = width / 2
@@ -682,12 +694,22 @@ def detect_green_objects(frame):
     try:
         frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
-        # Optimized HSV ranges for LED detection
-        NEON_GREEN_LOW = np.array([45, 50, 150])  # Higher value minimum for LED brightness
-        NEON_GREEN_HIGH = np.array([85, 255, 255])
+        # Select color range based on selected color
+        if color == 'purple':
+            color_low = PURPLE_LOW
+            color_high = PURPLE_HIGH
+            display_color = (255, 0, 255)  # Magenta for purple targets
+        elif color == 'yellow':
+            color_low = YELLOW_LOW
+            color_high = YELLOW_HIGH
+            display_color = (0, 255, 255)  # Yellow for yellow targets
+        else:  # Default to green
+            color_low = GREEN_LOW
+            color_high = GREEN_HIGH
+            display_color = (0, 255, 0)  # Green for green targets
         
         # Create mask
-        mask = cv2.inRange(frame_hsv, NEON_GREEN_LOW, NEON_GREEN_HIGH)
+        mask = cv2.inRange(frame_hsv, color_low, color_high)
         
         # Find individual LED points
         kernel = np.ones((3, 3), np.uint8)
@@ -700,7 +722,7 @@ def detect_green_objects(frame):
         min_led_area = max(5, int(10 / (sensitivity * 2)))
         valid_leds = [c for c in led_contours if cv2.contourArea(c) >= min_led_area]
         
-        logging.debug(f"Found {len(valid_leds)} valid LEDs")
+        logging.debug(f"Found {len(valid_leds)} valid {color} LEDs")
         
         if len(valid_leds) >= 2:  # Need at least 2 LEDs to form a target
             # Get centers of all valid LEDs
@@ -807,7 +829,7 @@ def detect_green_objects(frame):
             
             if targets:
                 current_time = time.time()
-                detect_green_objects.last_valid_detection_time = current_time
+                detect_targets.last_valid_detection_time = current_time
                 
                 # Sort targets by LED count (closer to 5) and circularity
                 targets.sort(key=lambda x: (abs(5 - x['led_count']), x['circularity']))
@@ -817,8 +839,8 @@ def detect_green_objects(frame):
                 secondary_targets = []
                 
                 # If we have a current target, try to maintain it
-                if detect_green_objects.current_target_center is not None:
-                    prev_x, prev_y = detect_green_objects.current_target_center
+                if detect_targets.current_target_center is not None:
+                    prev_x, prev_y = detect_targets.current_target_center
                     
                     # Look for current target in new targets
                     for target in targets:
@@ -838,16 +860,16 @@ def detect_green_objects(frame):
                 # If no primary target found or if we don't have one yet
                 if primary_target is None:
                     # Only switch targets if cooldown expired
-                    if current_time - detect_green_objects.target_switch_cooldown > 0.5:
+                    if current_time - detect_targets.target_switch_cooldown > 0.5:
                         # Pick the best target (closest to 5 LEDs and most circular)
                         primary_target = targets[0]
-                        detect_green_objects.target_switch_cooldown = current_time
-                        detect_green_objects.current_target_center = primary_target['center']
+                        detect_targets.target_switch_cooldown = current_time
+                        detect_targets.current_target_center = primary_target['center']
                         logging.debug(f"Switching to new target at {primary_target['center']}")
                 
                 # Update current target and store secondary targets
                 if primary_target is not None:
-                    detect_green_objects.current_target_center = primary_target['center']
+                    detect_targets.current_target_center = primary_target['center']
                     
                     # Store other targets as secondary, sorted by LED count and distance to center
                     secondary_targets = [t for t in targets if t != primary_target]
@@ -857,13 +879,13 @@ def detect_green_objects(frame):
                             target['distance_to_center'] = np.sqrt((tx - frame_center_x)**2 + 
                                                                  (ty - frame_center_y)**2)
                         secondary_targets.sort(key=lambda x: (-x['led_count'], x['distance_to_center']))
-                    detect_green_objects.secondary_targets = secondary_targets
+                    detect_targets.secondary_targets = secondary_targets
                     
                     # Draw all targets with different colors and numbers
                     for i, target in enumerate(targets):
                         is_primary = (target == primary_target)
                         if is_primary:
-                            color = (0, 255, 0)  # Green for primary
+                            color = display_color
                             thickness = 2
                             label = "Target 1"
                         else:
@@ -895,16 +917,16 @@ def detect_green_objects(frame):
         
         # Reset if no valid targets found
         current_time = time.time()
-        if current_time - detect_green_objects.last_valid_detection_time > 2.0:
-            detect_green_objects.current_target_center = None
-            detect_green_objects.secondary_targets = []
+        if current_time - detect_targets.last_valid_detection_time > 2.0:
+            detect_targets.current_target_center = None
+            detect_targets.secondary_targets = []
             logging.debug("No valid targets found - resetting tracking")
         else:
             logging.debug("No targets in this frame, but maintaining last known position")
         return frame, None, None
         
     except Exception as e:
-        logging.error(f"Error in detect_green_objects: {e}")
+        logging.error(f"Error in detect_targets: {e}")
         logging.error(traceback.format_exc())
         return frame, None, None
 
@@ -935,14 +957,18 @@ def camera_feed_thread():
             with frame_lock:
                 latest_frame = frame.copy()
             
-            # Process frame once for green objects and bounding boxes
-            processed_frame, target_x, target_y = detect_green_objects(frame.copy())
+            # Get current selected color
+            with command_lock:
+                selected_color = latest_command.get('selected_color', 'green')
             
-            # Draw small green crosshair at frame center
+            # Process frame for target detection with selected color
+            processed_frame, target_x, target_y = detect_targets(frame.copy(), selected_color)
+            
+            # Draw small crosshair at frame center
             height, width = processed_frame.shape[:2]
             center_x = int(width/2)
             center_y = int(height/2)
-            crosshair_size = 10  # Small 10-pixel lines
+            crosshair_size = 10
             cv2.line(processed_frame, (center_x - crosshair_size, center_y), 
                     (center_x + crosshair_size, center_y), (0, 255, 0), 1)
             cv2.line(processed_frame, (center_x, center_y - crosshair_size), 
@@ -956,11 +982,10 @@ def camera_feed_thread():
                     'target_y': target_y
                 }
             
-            # Encode and publish frame with reduced quality for better performance
+            # Encode and publish frame
             _, img_encoded = cv2.imencode('.jpg', processed_frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
             client.publish(MQTT_TOPIC_CAMERA, img_encoded.tobytes(), qos=0)
             
-            # Add a small delay to control frame rate
             time.sleep(0.033)  # ~30fps
             
         except Exception as e:
