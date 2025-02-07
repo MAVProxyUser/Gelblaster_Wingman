@@ -161,10 +161,10 @@ ADDR_POSITION_I_GAIN = 82    # Control table address for Position I Gain
 ADDR_POSITION_D_GAIN = 80    # Control table address for Position D Gain
 
 # Add these constants at the top with other constants
-PAN_MIN_POSITION = 0     # Changed from -6144 to allow full range
-PAN_MAX_POSITION = 4095  # Changed from 6144 to standard range
-TILT_MIN_POSITION = 0    # Changed from 200 to allow full range
-TILT_MAX_POSITION = 4095 # Changed from 3800 to allow full range
+PAN_MIN_POSITION = -6144     # Restored extended range for pan (1.5 rotations CCW)
+PAN_MAX_POSITION = 6144      # Restored extended range for pan (1.5 rotations CW)
+TILT_MIN_POSITION = 0        # Keep standard range for tilt
+TILT_MAX_POSITION = 4095     # Keep standard range for tilt
 
 # Add at the top with other globals
 previous_error_x = 0
@@ -372,6 +372,10 @@ def read_servo_position(dxl_id, retries=3):
                 portHandler, dxl_id, ADDR_PRESENT_POSITION)
             
             if dxl_comm_result == COMM_SUCCESS and dxl_error == 0:
+                # Handle overflow for values near max uint32
+                if dxl_present_position > 0xFFFF0000:  # If value is close to uint32 max
+                    dxl_present_position = dxl_present_position - 0xFFFFFFFF - 1  # Convert to negative
+                
                 logging.debug(f"Successfully read position for servo {dxl_id}: {dxl_present_position}")
                 return dxl_present_position
             else:
@@ -465,10 +469,10 @@ def on_command(client, userdata, message):
                 if 'tilt_delta' in payload:
                     # Get current tilt angle, defaulting to 0 if not set
                     current_tilt = latest_command.get('tilt_angle', 0)
-                    # Add the delta and store back
-                    latest_command['tilt_angle'] = current_tilt + payload['tilt_delta']
+                    # Add the delta (reduced to 1/8) and store back
+                    latest_command['tilt_angle'] = current_tilt + (payload['tilt_delta'] * 0.125)  # Reduced to 1/8
                     latest_command['command_received'] = True
-                    logging.info(f"Tilt delta {payload['tilt_delta']} applied, new angle: {latest_command['tilt_angle']}")
+                    logging.info(f"Tilt delta {payload['tilt_delta'] * 0.125} applied, new angle: {latest_command['tilt_angle']}")
                 if 'auto_mode' in payload:
                     latest_command['auto_mode'] = payload['auto_mode']
                     latest_command['command_received'] = True
@@ -735,7 +739,7 @@ def detect_green_objects(frame):
                                 used_centers.add(j)
                                 break
                 
-                if len(group) == 5:  # When we have 5 LEDs, analyze the pattern
+                if len(group) >= 3:  # Accept groups with 3 or more LEDs (changed from requiring exactly 5)
                     # Calculate group properties
                     center_x = int(np.mean([c[0] for c in group]))
                     center_y = int(np.mean([c[1] for c in group]))
@@ -746,8 +750,15 @@ def detect_green_objects(frame):
                     avg_distance = np.mean(distances_to_center)
                     distance_variance = np.std(distances_to_center)
                     
-                    # More lenient circularity check
-                    if distance_variance < avg_distance * 0.5:  # Increased from 0.3 to 0.5
+                    # Adjust circularity requirements based on LED count
+                    max_variance_ratio = {
+                        3: 0.7,  # More lenient for 3 LEDs
+                        4: 0.6,  # Moderately strict for 4 LEDs
+                        5: 0.5   # Most strict for 5 LEDs
+                    }[len(group)]
+                    
+                    # More lenient circularity check based on LED count
+                    if distance_variance < avg_distance * max_variance_ratio:
                         # Calculate angles between LEDs to verify spacing
                         angles = []
                         for led_pos in group:
@@ -758,21 +769,39 @@ def detect_green_objects(frame):
                         
                         # Sort angles and calculate differences
                         angles.sort()
-                        angle_diffs = [(angles[(i+1)%5] - angles[i]) % (2*math.pi) for i in range(5)]
-                        avg_angle_diff = sum(angle_diffs) / 5
-                        angle_variance = sum((diff - avg_angle_diff)**2 for diff in angle_diffs) / 5
+                        expected_angle = 2 * math.pi / len(group)  # Adjust expected angle based on LED count
+                        angle_diffs = [(angles[(i+1)%len(group)] - angles[i]) % (2*math.pi) for i in range(len(group))]
+                        avg_angle_diff = sum(angle_diffs) / len(group)
+                        angle_variance = sum((diff - expected_angle)**2 for diff in angle_diffs) / len(group)
                         
-                        # More lenient angle spacing check
-                        if angle_variance < 0.5:  # Increased from 0.3 to 0.5
+                        # Adjust angle spacing requirements based on LED count
+                        max_angle_variance = {
+                            3: 0.8,  # More lenient for 3 LEDs
+                            4: 0.6,  # Moderately strict for 4 LEDs
+                            5: 0.5   # Most strict for 5 LEDs
+                        }[len(group)]
+                        
+                        if angle_variance < max_angle_variance:
+                            # Calculate confidence based on LED count and pattern quality
+                            led_count_weight = len(group) / 5.0  # Base confidence on LED count
+                            circularity_weight = 1.0 - (distance_variance / (avg_distance * max_variance_ratio))
+                            angle_weight = 1.0 - (angle_variance / max_angle_variance)
+                            
+                            # Combined confidence score
+                            confidence = (led_count_weight * 0.4 +  # 40% weight on LED count
+                                        circularity_weight * 0.3 +  # 30% weight on circularity
+                                        angle_weight * 0.3)        # 30% weight on angle spacing
+                            
                             targets.append({
                                 'center': (center_x, center_y),
                                 'led_count': len(group),
                                 'spread': max(distances_to_center),
                                 'led_positions': group,
                                 'circularity': distance_variance / avg_distance,
-                                'angle_variance': angle_variance
+                                'angle_variance': angle_variance,
+                                'confidence': confidence
                             })
-                            break  # Break after finding a valid target with this starting LED
+                            # Don't break here - continue looking for other potential targets
             
             logging.debug(f"Found {len(targets)} valid targets")
             
@@ -856,7 +885,8 @@ def detect_green_objects(frame):
                     
                     # Calculate error for primary target
                     center_x, center_y = primary_target['center']
-                    error_x = (center_x - frame_center_x) / (width/2)
+                    # Add a small correction factor (0.015 = 1.5% of frame width) to compensate for leftward bias
+                    error_x = ((center_x - frame_center_x) / (width/2)) + 0.015
                     error_y = (center_y - frame_center_y) / (height/2)
                     
                     logging.debug(f"Target errors: x={error_x:.3f}, y={error_y:.3f}")
@@ -993,8 +1023,8 @@ def control_servos():
                                         control_servos.prev_error_y = error_y
                                         
                                         # Very small deadzones for precise centering
-                                        pan_deadzone = 0.002  # Further reduced for more precise centering
-                                        tilt_deadzone = 0.002  # Further reduced for more precise centering
+                                        pan_deadzone = 0.0005  # Reduced from 0.002 for much more precise centering
+                                        tilt_deadzone = 0.0005  # Reduced from 0.002 for much more precise centering
                                         
                                         # Check if crosshair is inside the target circle (20 pixel radius)
                                         # Convert normalized errors back to pixels
@@ -1002,7 +1032,9 @@ def control_servos():
                                         error_y_pixels = error_y * (height/2)
                                         distance_to_target = np.sqrt(error_x_pixels**2 + error_y_pixels**2)
                                         
-                                        if distance_to_target < 20:  # If crosshair is inside the 20-pixel circle
+                                        # Separate targeting from firing
+                                        # Keep moving to center even when within firing range
+                                        if distance_to_target < 20:  # Close enough to fire
                                             if time_near_target == 0:
                                                 time_near_target = current_time
                                             elif current_time - time_near_target > 0.05:  # Quick 50ms confirmation
@@ -1019,14 +1051,14 @@ def control_servos():
                                                 damping_factor = 0.3  # Less damping when far
                                             elif abs(error_x) > 0.1:  # Medium distance
                                                 base_speed = 400
-                                                damping_factor = 0.5  # More damping as we get closer
+                                                damping_factor = 0.4  # Moderate damping
                                             else:  # Close to target
                                                 base_speed = 200
-                                                damping_factor = 0.7  # Heavy damping for fine control
+                                                damping_factor = 0.5  # Reduced damping for finer control
                                             
                                             # Apply speed based on error with adaptive damping
                                             pan_adjustment = error_x * base_speed
-                                            damping = -error_dx * 400  # Increased base damping
+                                            damping = -error_dx * 300  # Reduced from 400 for less aggressive damping
                                             
                                             # Apply proportional damping
                                             pan_adjustment = pan_adjustment * (1 - damping_factor) + damping * damping_factor
@@ -1036,20 +1068,24 @@ def control_servos():
                                         # Similar approach for tilt with reduced speeds
                                         if abs(error_y) > tilt_deadzone:
                                             if abs(error_y) > 0.3:  # Far from target
-                                                base_speed = 120
-                                                damping_factor = 0.3
+                                                base_speed = 60  # Reduced from 80 for smoother movement
+                                                damping_factor = 0.6  # Increased damping
                                             elif abs(error_y) > 0.1:  # Medium distance
-                                                base_speed = 60
-                                                damping_factor = 0.5
+                                                base_speed = 30  # Reduced from 40
+                                                damping_factor = 0.7  # More damping
                                             else:  # Close to target
-                                                base_speed = 30
-                                                damping_factor = 0.7
+                                                base_speed = 15  # Reduced from 20
+                                                damping_factor = 0.8  # Much heavier damping for fine adjustments
                                             
                                             tilt_adjustment = error_y * base_speed
-                                            damping = -error_dy * 100  # Increased tilt damping
+                                            damping = -error_dy * 150  # Increased derivative damping
                                             
-                                            # Apply proportional damping
+                                            # Apply proportional damping with stronger effect when close
                                             tilt_adjustment = tilt_adjustment * (1 - damping_factor) + damping * damping_factor
+                                            
+                                            # Additional velocity limiting when close to target
+                                            if abs(error_y) < 0.1:
+                                                tilt_adjustment = max(min(tilt_adjustment, 10), -10)  # Strict velocity limit when close
                                         else:
                                             tilt_adjustment = 0
                                         
@@ -1140,9 +1176,23 @@ def write_servo_position(dxl_id, position, retries=3):
             position = int(position)
             original_position = position
             
-            if dxl_id == DXL1_ID:  # Pan servo valid range 0–4095
+            if dxl_id == DXL1_ID:  # Pan servo
+                # For pan servo, we want to allow full rotation while maintaining direction
+                # First, handle the case where position is outside our range
+                if position > PAN_MAX_POSITION:
+                    # Calculate how many full rotations we're over
+                    rotations = (position - PAN_MAX_POSITION) // 4096
+                    # Keep the remainder, maintaining direction
+                    position = position - (rotations * 4096)
+                elif position < PAN_MIN_POSITION:
+                    # Calculate how many full rotations we're under
+                    rotations = (PAN_MIN_POSITION - position) // 4096
+                    # Keep the remainder, maintaining direction
+                    position = position + (rotations * 4096)
+                
+                # Now ensure we're within absolute limits
                 position = max(PAN_MIN_POSITION, min(position, PAN_MAX_POSITION))
-                logging.debug(f"Pan position before/after limits: {original_position}/{position}")
+                logging.debug(f"Pan position before/after mapping: {original_position}/{position}")
             else:  # Tilt servo
                 position = max(TILT_MIN_POSITION, min(position, TILT_MAX_POSITION))
                 logging.debug(f"Tilt position before/after limits: {original_position}/{position}")
@@ -1151,7 +1201,7 @@ def write_servo_position(dxl_id, position, retries=3):
                 logging.debug(f"  Current limits: TILT_MIN_POSITION={TILT_MIN_POSITION}, TILT_MAX_POSITION={TILT_MAX_POSITION}")
                 logging.debug(f"  Writing position value: {position}")
             
-            # Use 4-byte write for both servos in extended position mode
+            # Use 4-byte write for both servos
             dxl_comm_result, dxl_error = packetHandler.write4ByteTxRx(
                 portHandler, dxl_id, ADDR_GOAL_POSITION, position)
             
