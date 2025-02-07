@@ -622,8 +622,9 @@ def main_loop():
     # Initialize controller state
     controller_state = ControllerState()
     
-    # Initialize display window
-    cv2.namedWindow('Turret Client', cv2.WINDOW_NORMAL)
+    # Initialize display window for Steam Deck fullscreen
+    cv2.namedWindow('Turret Client', cv2.WND_PROP_FULLSCREEN)
+    cv2.setWindowProperty('Turret Client', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback('Turret Client', mouse_callback)
     
     try:
