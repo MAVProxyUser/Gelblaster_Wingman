@@ -2,6 +2,10 @@
 
 [![Gelblasters](images/GelBlasterlogo.jpg)](https://gelblaster.com)
 
+Direct link to Bambu Labs printer files<br>
+https://makerworld.com/en/models/787554#profileId-725499<br>
+https://makerworld.com/en/models/787567#profileId-725512<br>
+
 If you are interested in building & programming your own "Wingman" turret stop by:<br>
 https://join.slack.com/t/robotdogs/shared_invite/zt-24ep8mqn4-1p42Aq7owRv9klLI~3C5Pw and join #gelblasters 
 
