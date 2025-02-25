@@ -1,0 +1,35 @@
+# Current platform is Jetson AGX Xavier with Jetpack 5.1.4 [L4T 35.6.0]
+# https://developer.nvidia.com/embedded/jetpack-sdk-514
+# https://developer.nvidia.com/embedded/jetson-linux-r3560
+#
+# You'll need Ubuntu 20.x installed to flash the Jetson with the above software
+# Install via: https://developer.nvidia.com/sdk-manager
+# https://developer.download.nvidia.com/sdkmanager/redirects/sdkmanager-deb.html
+
+$ sudo pip3 install -U jetson-stats
+$ sudo apt-get install nano
+$ sudo apt-get install python3-pip
+$ sudo apt-get install python3-pygame
+$ sudo apt-get install python3-paho-mqtt
+$ sudo apt-get install nvidia-opencv nvidia-opencv-dev
+$ sudo apt-get install python3-netifaces
+
+# Install DepthAI SDK 
+$ sudo python3 -m pip install --extra-index-url https://artifacts.luxonis.com/artifactory/luxonis-python-snapshot-local/ depthai
+
+# Install Dynamixel SDK 
+$ git clone --recursive https://github.com/ROBOTIS-GIT/DynamixelSDK.git
+$ cd python/
+$ sudo python3 setup.py build
+$ sudo python3 setup.py install
+
+# Install Mosquito MQTT server
+$ sudo apt install mosquitto mosquitto-clients
+$ sudo systemctl start mosquitto
+$ sudo systemctl enable mosquitto
+
+# Fix permissions for non root use
+$ echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' | sudo tee /etc/udev/rules.d/80-movidius.rules
+$ sudo udevadm control --reload-rules && sudo udevadm trigger
+$ echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", MODE="0666"' | sudo tee /etc/udev/rules.d/80-usbserial.rules
+$ sudo udevadm control --reload-rules && udevadm trigger
